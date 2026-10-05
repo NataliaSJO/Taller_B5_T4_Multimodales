@@ -1,0 +1,15 @@
+# Ejecución del notebook en Jupyter
+jupyterlab
+ipykernel
+ipython
+
+# Modelo Whisper y pipeline de Hugging Face
+torch
+transformers
+accelerate
+safetensors
+
+# Lectura, preparación y grabación del audio
+numpy
+scipy
+sounddevice
