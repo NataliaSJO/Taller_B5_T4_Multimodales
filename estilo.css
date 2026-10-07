@@ -5,6 +5,11 @@ h1, h2, h3 {
     color: #173553;
 }
 
+/* Oculta el botón de despliegue de Streamlit en todas las páginas. */
+[data-testid="stAppDeployButton"] {
+    display: none !important;
+}
+
 /* Burbujas de la conversación */
 [data-testid="stChatMessage"] {
     border-radius: 12px;

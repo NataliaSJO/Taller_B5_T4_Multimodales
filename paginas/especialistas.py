@@ -8,7 +8,7 @@ import streamlit as st
 
 from src import ai_filter, tts, ui
 from src.audio import AUDIO_TYPES, transcribe_audio
-from src.conversation import GREETING, extra_question, is_yes, merge, missing, parse_turn, question, relax
+from src.conversation import GREETING, extra_question, merge, parse_turn, question
 
 RULES, MODEL = "Reglas", "Reglas + modelo de lenguaje"
 FILTERS = {"gpu": "Gemma 3 4B en GPU", "local": "Gemma 3 1B en CPU", "claude": "Claude por API", "off": "Solo reglas"}
@@ -17,16 +17,14 @@ FILTERS = {"gpu": "Gemma 3 4B en GPU", "local": "Gemma 3 1B en CPU", "claude": "
 def handle(text: str, funds, source: str):
     state = st.session_state
     state.messages.append({"role": "user", "text": text})
-    pending_relax = state.pop("relax", None)
-    if pending_relax and is_yes(text):
-        state.profile = relax(state.profile, pending_relax)
-    else:
+    new = parse_turn(text, state.pending)
+    if state.get("lector") == MODEL:
         history = [(message["role"], message["text"]) for message in state.messages[:-1]]
-        read = ai_filter.understand(history, state.profile, text) if state.get("lector") == MODEL else None
+        read = ai_filter.understand(history, state.profile, text)
         if read:  # the rules have the last word where both found something
-            state.profile = merge(state.profile, read[0])
-        state.profile = merge(state.profile, parse_turn(text, state.pending))
-    state.pending = missing(state.profile)
+            new = merge(read[0], new)
+    if not ui.update_preferences(new, text):
+        return
     extra = None if state.pending or state.get("extra_asked") else extra_question(state.profile)
     if state.pending:
         ui.say(question(state.profile))

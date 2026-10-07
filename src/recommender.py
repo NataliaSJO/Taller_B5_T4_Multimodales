@@ -1,5 +1,6 @@
 """Evidence-aware, reproducible shortlist. Never invents fund holdings."""
 
+import math
 import re
 from dataclasses import replace
 from datetime import date
@@ -50,25 +51,37 @@ INSTITUTIONAL = re.compile(r"\b(?:institutional|institucional|inst|instl|ia)\b"
 # Words that distinguish share classes of one fund, not different portfolios.
 CLASS_WORDS = frozenset((
     "fund funds fondo fi fcp sicav ucits class clase retail institutional inst investor acc accumulation "
-    "dist distribution capitalisation cap inc hedged unhedged eur usd gbp gbx chf nok sek the and"
+    "dist distribution capitalisation cap inc eur usd gbp gbx chf nok sek the and"
 ).split())
 
 
 def _family_name(name: str) -> str:
     """Best-effort grouping of share classes of the same fund; never merges source records."""
-    words = re.sub(r"[^a-z0-9 ]+", " ", normalize(name)).split()
-    kept = [word for word in words if len(word) > 2 and word not in CLASS_WORDS and not word.isdigit()]
+    clean = re.sub(r"\s+in\s+[a-z]{2}\W*$", "", normalize(name))
+    clean = re.sub(r"\bs\s*&\s*p\b", "sp", clean)
+    words = re.sub(r"[^a-z0-9 ]+", " ", clean).split()
+    kept = [word for word in words if word not in CLASS_WORDS]
+    # Strip only likely suffix class codes; retain index numbers, hedge status
+    # and short geographic/strategy terms. Unknown classes can remain separate.
+    class_suffixes = {"ia", "ib", "ic", "id", "ii"}
+    while kept and ((len(kept[-1]) == 1 and kept[-1].isalpha()) or kept[-1] in class_suffixes):
+        kept.pop()
     return " ".join(kept) or " ".join(words)
 
 
 def _verified(value: str, source_url: str) -> bool:
-    return bool(source_url and value and not value.lower().startswith("pendiente"))
+    clean = normalize(value).strip()
+    return bool(source_url and clean and clean not in {"—", "-", "n/a", "n/d"}
+                and not clean.startswith(("pendiente", "sin dato", "no verificad", "no disponible", "desconocid")))
 
 
-def _matches_region(fund: Fund, region: str) -> bool:
-    if not fund.source_url:
-        return False
-    haystack = normalize(f"{fund.regions} {fund.strategy}")
+def _matches_region(fund: Fund, region: str) -> bool | None:
+    if not _verified(fund.regions, fund.source_url):
+        if (region == "global" and _verified(fund.strategy, fund.source_url)
+                and any(term in normalize(fund.strategy) for term in ("global", "mundial", "msci world"))):
+            return True
+        return None
+    haystack = normalize(fund.regions)
     if region == "global":
         return any(term in haystack for term in ("global", "mundial", "msci world"))
     aliases = {"estados unidos": ("estados unidos", "america", "americas", "eeuu", "usa"),
@@ -80,9 +93,9 @@ def _matches_region(fund: Fund, region: str) -> bool:
     )
 
 
-def _matches_sector(fund: Fund, sector: str) -> bool:
+def _matches_sector(fund: Fund, sector: str) -> bool | None:
     if not _verified(fund.sectors, fund.source_url):
-        return False
+        return None
     haystack = normalize(fund.sectors)
     aliases = {"tecnología": ("tecnologia", "tech"),
                "salud": ("salud", "sanidad", "health"),
@@ -91,9 +104,9 @@ def _matches_sector(fund: Fund, sector: str) -> bool:
     return any(token in haystack for token in aliases.get(sector, (normalize(sector),)))
 
 
-def _matches_asset(fund: Fund, asset_class: str) -> bool:
+def _matches_asset(fund: Fund, asset_class: str) -> bool | None:
     if not _verified(fund.assets, fund.source_url):
-        return False
+        return None
     assets = normalize(fund.assets)
     fixed = "renta fija" in assets or "bonos" in assets or "deuda" in assets
     equity = "renta variable" in assets or "acciones" in assets
@@ -114,8 +127,13 @@ def _thematic(fund: Fund, preferences: Preferences) -> list[str] | None:
     by_name = []
     for value, verified in ((preferences.region, _matches_region), (preferences.sector, _matches_sector),
                             (preferences.asset_class, _matches_asset)):
-        if not value or verified(fund, value):
+        if not value:
             continue
+        match = verified(fund, value)
+        if match is True:
+            continue
+        if match is False:
+            return None
         if not NAME_HINTS[value].search(normalize(fund.name)):
             return None
         by_name.append(value)
@@ -236,24 +254,40 @@ def _institutional(fund: Fund) -> bool:
     return bool(INSTITUTIONAL.search(normalize(fund.name)))
 
 
-def allocate(items, years: int | None = None) -> list[float]:
-    """Fallback split when no model proposes one: more weight to the funds that fit the profile
-    best (their score), with no fund above 40 % when there are three or more.
+def allocation_limits(count: int) -> tuple[float, float]:
+    if count < 1 or count > 20:
+        raise ValueError("El reparto requiere entre 1 y 20 fondos")
+    return (1.0, 1.0) if count == 1 else (0.05, 0.80 if count == 2 else 0.60)
 
-    Not a portfolio optimisation: correlations between funds are not available.
-    """
-    scores = [max(item.score, 0.01) for item in items]
-    weights = [score / sum(scores) for score in scores]
-    cap = 0.40 if len(items) >= 3 else 1.0
-    for _ in range(len(items)):
-        over = [index for index, weight in enumerate(weights) if weight > cap + 1e-9]
-        if not over:
-            break
-        excess = sum(weights[index] - cap for index in over)
-        free = [index for index, weight in enumerate(weights) if weight < cap - 1e-9]
-        room = sum(weights[index] for index in free)
-        for index in over:
-            weights[index] = cap
-        for index in free:
-            weights[index] += excess * weights[index] / room
+
+def valid_allocation(weights, count: int) -> bool:
+    if len(weights) != count or not count:
+        return False
+    lower, upper = allocation_limits(count)
+    return (all(type(value) in (int, float) and math.isfinite(value)
+                and lower - 1e-9 <= value <= upper + 1e-9 for value in weights)
+            and math.isclose(sum(weights), 1.0, abs_tol=1e-9, rel_tol=0))
+
+
+def allocate(items, years: int) -> list[float]:
+    """Inverse-volatility allocation with the same bounds as model allocations."""
+    lower, upper = allocation_limits(len(items))
+    inverse = []
+    for item in items:
+        vol = item.fund.metrics(years)[1]
+        if type(vol) not in (int, float) or not math.isfinite(vol) or vol < 0:
+            raise ValueError("Volatilidad no válida para repartir la inversión")
+        inverse.append(1.0 / max(vol, 0.01))
+    # Find the scale for bounded proportional weights. This retains the original
+    # inverse-volatility proportions whenever neither bound is active.
+    low, high = 0.0, 1.0 / min(inverse)
+    for _ in range(80):
+        scale = (low + high) / 2
+        if sum(min(upper, max(lower, scale * value)) for value in inverse) < 1:
+            low = scale
+        else:
+            high = scale
+    weights = [min(upper, max(lower, high * value)) for value in inverse]
+    if not valid_allocation(weights, len(items)):
+        raise ValueError("No se ha podido obtener un reparto válido")
     return weights

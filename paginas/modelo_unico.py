@@ -8,7 +8,7 @@ import streamlit as st
 
 from src import omni, tts, ui
 from src.audio import to_wav
-from src.conversation import GREETING, extra_question, is_yes, merge, missing, question, relax
+from src.conversation import GREETING, extra_question, question
 
 AUDIO = (".wav", ".mp3", ".flac", ".ogg")
 IMAGES = (".png", ".jpg", ".jpeg")
@@ -24,14 +24,10 @@ def handle(text: str, audio: list[str], images: list[str], funds, source: str):
         ui.say("No te he entendido bien. ¿Puedes repetirlo con otras palabras?")
         return
     state.messages.append({"role": "user", "text": transcript or text or "(mensaje de voz)"})
-    pending_relax = state.pop("relax", None)
-    if pending_relax and is_yes(transcript):
-        state.profile = relax(state.profile, pending_relax)
-    else:
-        state.profile = merge(state.profile, new)
-    state.pending = missing(state.profile)
+    if not ui.update_preferences(new, transcript or text):
+        return
     if state.pending:
-        ui.say(ask or question(state.profile))
+        ui.say(question(state.profile))
     elif not state.get("extra_asked") and extra_question(state.profile):
         state.extra_asked = True
         ui.say(ask or extra_question(state.profile))

@@ -13,6 +13,7 @@ Con Claude, ADVISOR_WEB=on le deja además buscar en la web datos de los candida
 """
 
 import json
+import math
 import os
 from functools import lru_cache
 
@@ -20,12 +21,20 @@ from .models import Criteria, Preferences, Proposal, Recommendation
 from .hf_model import generate, gpu_available, parse_json
 from .paths import GPU_LLM_PATH, LLM_PATH
 from .preferences import normalize
-from .recommender import RISK, WEIGHTS, allocate
+from .recommender import RISK, WEIGHTS, allocate, allocation_limits, valid_allocation
 
 # Candidates shown to the model. On CPU each one costs about half a second of prompt time.
 CANDIDATES = {"gpu": 150, "local": 10, "claude": 150}
 # Number of funds for each wanted degree of diversification (None = not stated).
 FUNDS = {"baja": 2, "media": 4, None: 5, "alta": 7}
+
+
+def requested_count(preferences: Preferences) -> int:
+    if preferences.fund_count is not None:
+        if type(preferences.fund_count) is not int or not 1 <= preferences.fund_count <= 7:
+            raise ValueError("El número de fondos debe estar entre 1 y 7")
+        return preferences.fund_count
+    return FUNDS[preferences.diversification]
 
 
 def _schema(count: int) -> dict:
@@ -82,6 +91,7 @@ def label(name: str | None = None) -> str:
 def _prompt(candidates: list[Recommendation], preferences: Preferences, conversation: str, count: int) -> str:
     years = preferences.horizon_years
     target, ceiling = RISK[preferences.risk]
+    lower_weight, upper_weight = allocation_limits(count)
     lines = []
     for index, item in enumerate(candidates, start=1):
         ret, vol, sharpe = item.fund.metrics(years)
@@ -112,7 +122,8 @@ def _prompt(candidates: list[Recommendation], preferences: Preferences, conversa
         "3. Objetivo del cliente: si quiere crecer, más rentabilidad histórica; si quiere conservar u obtener "
         "rentas, menos volatilidad y mejor Sharpe.\n"
         "4. A igualdad de lo demás, prefiere costes más bajos cuando el dato aparece.\n"
-        "5. Diversificación: evita repetir la misma gestora o la misma estrategia y no concentres más del 60 % en un fondo.\n\n"
+        f"5. Diversificación: evita repetir la misma gestora o la misma estrategia. "
+        f"Asigna entre el {lower_weight:.0%} y el {upper_weight:.0%} a cada fondo.\n\n"
         "Devuelve JSON con «seleccion» (id del fondo y peso en porcentaje entero; los pesos suman 100) y "
         "«comentario» (una sola frase breve en español que explique la cartera al cliente)."
     )
@@ -277,14 +288,18 @@ def decide(preferences: Preferences, conversation: str) -> Criteria | None:
 
 
 def _validated(answer: dict, candidates: list[Recommendation], preferences: Preferences, limit: int) -> tuple[list[Recommendation], list[float], str]:
+    if not isinstance(answer, dict) or not isinstance(answer.get("seleccion"), list):
+        raise ValueError("Selección no válida")
     chosen, weights, seen = [], [], set()
     for entry in answer["seleccion"]:
-        index = entry["id"]
-        if not 1 <= index <= len(candidates) or index in seen:
+        if not isinstance(entry, dict):
+            continue
+        index = entry.get("id")
+        if type(index) is not int or not 1 <= index <= len(candidates) or index in seen:
             continue
         seen.add(index)
         chosen.append(candidates[index - 1])
-        weights.append(entry["peso"])
+        weights.append(entry.get("peso"))
         if len(chosen) >= limit:
             break
     if not chosen:
@@ -292,19 +307,20 @@ def _validated(answer: dict, candidates: list[Recommendation], preferences: Pref
     if len(chosen) < limit:  # repeated or invented ids: complete with the best remaining candidates
         chosen += [item for item in candidates if item not in chosen][:limit - len(chosen)]
         weights = []
-    total = sum(weights)
-    shares = [weight / total for weight in weights] if total > 0 else []
+    numeric = all(type(weight) in (int, float) and math.isfinite(weight) and weight > 0 for weight in weights)
+    total = sum(weights) if numeric else 0
+    shares = [weight / total for weight in weights] if total > 0 and math.isfinite(total) else []
     # A concentrated or degenerate split is replaced by the risk-based one.
-    if not shares or min(shares) < 0.05 or max(shares) > (0.60 if len(shares) > 2 else 0.80):
+    if not valid_allocation(shares, len(chosen)):
         shares = allocate(chosen, preferences.horizon_years)
-    return chosen, shares, " ".join(str(answer["comentario"]).split())[:400]
+    return chosen, shares, " ".join(str(answer.get("comentario") or "").split())[:400]
 
 
 def select(candidates: list[Recommendation], preferences: Preferences, conversation: str) -> Proposal:
     """Choose and weight the funds of the proposal. `candidates` must be sorted best first."""
     years = preferences.horizon_years
     name = backend()
-    count = min(FUNDS[preferences.diversification], len(candidates))
+    count = min(requested_count(preferences), len(candidates))
     fallback = tuple(candidates[:count])
     if name == "off" or len(candidates) <= count:
         return Proposal(fallback, tuple(allocate(fallback, years)), "Reglas deterministas")

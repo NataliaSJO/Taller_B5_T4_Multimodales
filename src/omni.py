@@ -5,14 +5,21 @@ specialised pipeline. It cannot speak, so the answer is still voiced by Piper, a
 still reduced by the hard constraints before the model sees it.
 """
 
+from dataclasses import replace
+
 from . import ai_filter, extraction
 from .hf_model import generate, parse_json
 from .models import Criteria, Preferences, Proposal, Recommendation
 from .paths import OMNI_PATH
+from .preferences import parse_heuristic
 from .recommender import allocate
 
 LABEL = "Gemma 3n E2B (modelo único)"
 CANDIDATES = 150
+FIELDS, INSTRUCTIONS = extraction.FIELDS, extraction.INSTRUCTIONS
+_preferences = extraction.to_preferences
+
+
 def available() -> bool:
     return (OMNI_PATH / "config.json").is_file()
 
@@ -39,6 +46,10 @@ def understand(history: list[tuple[str, str]], known: Preferences, text: str = "
     said = " ".join(part for part in (heard, text) if part)
     answer = parse_json(generate(OMNI_PATH, [{"type": "text", "text": extraction.prompt(history, known, said)}], 400))
     new, ask = extraction.read(answer)
+    # An explicit exclusion in the transcript must survive a model omission.
+    excluded = tuple(dict.fromkeys(new.excluded_sectors + parse_heuristic(said).excluded_sectors))
+    new = replace(new, excluded_sectors=excluded,
+                  sector=None if new.sector in excluded else new.sector)
     return new, said, ask
 
 
@@ -54,7 +65,7 @@ def decide(preferences: Preferences, conversation: str) -> Criteria | None:
 def select(candidates: list[Recommendation], preferences: Preferences, conversation: str) -> Proposal:
     """Same task and validation as the specialised filter, answered by the multimodal model."""
     years = preferences.horizon_years
-    count = min(ai_filter.FUNDS[preferences.diversification], len(candidates))
+    count = min(ai_filter.requested_count(preferences), len(candidates))
     fallback = tuple(candidates[:count])
     if len(candidates) <= count:
         return Proposal(fallback, tuple(allocate(fallback, years)), "Reglas deterministas")

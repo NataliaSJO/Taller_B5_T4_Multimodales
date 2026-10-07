@@ -15,6 +15,8 @@ class Preferences:
     objective: str | None = None
     experience: str | None = None
     loss_reaction: str | None = None
+    fund_count: int | None = None
+    amount_needs_clarification: bool = False
 
 
 @dataclass(frozen=True)

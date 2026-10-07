@@ -8,7 +8,8 @@ from src.catalog import load_catalog
 from src.conversation import advise, extra_question, is_yes, merge, missing, parse_turn, question, relax
 from src.models import Criteria, Preferences
 from src.recommender import allocate, recommend
-from src.report import build_pdf, percents, summary_text
+from src.report import build_pdf, capital_evolution, percents, summary_text
+from src.money import investment_allocation
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -108,16 +109,12 @@ class ProposalTests(unittest.TestCase):
         cls.profile = Preferences(5, "medio", "EUR", amount=10000)
         cls.candidates, _ = recommend(load_catalog(ROOT / "data/demo_funds.csv"), cls.profile, limit=40)
 
-    def test_allocation_follows_fit_and_is_capped(self):
+    def test_allocation_favours_lower_volatility_within_limits(self):
         weights = allocate(self.candidates, 5)
         self.assertAlmostEqual(sum(weights), 1.0)
-        self.assertEqual(weights.index(max(weights)), 0)          # candidates come best first
-        self.assertLessEqual(max(weights), 0.40 + 1e-9)
-        self.assertEqual(sum(percents(weights)), 100)
-        from dataclasses import replace
-        lopsided = [replace(self.candidates[0], score=0.9), replace(self.candidates[1], score=0.05),
-                    replace(self.candidates[2], score=0.05)]
-        self.assertEqual([round(weight, 2) for weight in allocate(lopsided)], [0.40, 0.30, 0.30])
+        calmest = min(range(len(weights)), key=lambda i: self.candidates[i].fund.vol_5y)
+        self.assertEqual(weights.index(max(weights)), calmest)
+        self.assertTrue(all(0.05 - 1e-9 <= weight <= 0.60 + 1e-9 for weight in weights))
 
     def test_rules_are_used_when_ai_is_off(self):
         with patch.dict(os.environ, {"AI_FILTER": "off"}):
@@ -161,6 +158,20 @@ class ProposalTests(unittest.TestCase):
         self.assertIn("10000 euros", summary)
         pdf = build_pdf(proposal, self.profile, ["Quiero invertir 10.000 € a 5 años"], "demo")
         self.assertTrue(pdf.startswith(b"%PDF"))
+
+    def test_capital_evolution_uses_cumulative_returns_and_requested_horizon(self):
+        with patch.dict(os.environ, {"AI_FILTER": "off"}):
+            proposal = ai_filter.select(self.candidates, self.profile, "texto")
+        for years in (1, 3, 5):
+            points = capital_evolution(proposal, 10000, years)
+            self.assertEqual(len(points), years * 12 + 1)
+            self.assertAlmostEqual(points[0][1], 10000)
+            self.assertEqual(points[-1][0], years)
+            expected = sum(
+                float(amount) * (1 + item.fund.metrics(years)[0])
+                for item, amount in zip(proposal.items, investment_allocation(proposal.weights, 10000).amounts)
+            )
+            self.assertAlmostEqual(points[-1][1], expected)
 
 
 if __name__ == "__main__":
