@@ -20,13 +20,14 @@ if errorlevel 1 (
 
 set PY=.venv\Scripts\python.exe
 rem PyTorch con CUDA sale de su propio indice; en PyPI solo esta la version de CPU.
-%PY% -m pip install torch --index-url https://download.pytorch.org/whl/cu128
+rem torchvision va con el: si no, otro paquete lo traeria de PyPI y cambiaria PyTorch por el de CPU.
+%PY% -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 if errorlevel 1 goto error
 %PY% -m pip install -r requirements-gpu.txt
 if errorlevel 1 goto error
 %PY% -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)"
 if errorlevel 1 (
-    echo PyTorch se ha instalado pero no detecta la GPU. Actualiza el controlador de NVIDIA.
+    echo PyTorch se ha instalado pero no detecta la GPU. Comprueba el controlador de NVIDIA.
     pause
     exit /b 1
 )

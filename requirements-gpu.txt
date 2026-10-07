@@ -1,6 +1,6 @@
 # Modelos en GPU: filtro con Gemma 3 4B y version de modelo unico (Gemma 3n).
-# Instalar con: pip install -r requirements-gpu.txt --extra-index-url https://download.pytorch.org/whl/cu128
-torch>=2.8
+# PyTorch con CUDA se instala antes y aparte (ver instalar_parte2_opcional.bat):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 transformers>=5,<6
 accelerate
 bitsandbytes
