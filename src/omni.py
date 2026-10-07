@@ -12,7 +12,6 @@ from .hf_model import generate, parse_json
 from .models import Criteria, Preferences, Proposal, Recommendation
 from .paths import OMNI_PATH
 from .preferences import parse_heuristic
-from .recommender import allocate
 
 LABEL = "Gemma 3n E2B (modelo único)"
 CANDIDATES = 150

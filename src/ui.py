@@ -17,7 +17,6 @@ from .models import MAX_HORIZON, Preferences
 from .money import investment_allocation
 from .preferences import ASSET_CLASSES, REGIONS, SECTORS
 from .paths import BROCHURES, DEMO_CATALOG, PRIVATE_CATALOG, ROOT
-from .recommender import recommend
 from .report import DISCLAIMER, brief_summary, build_pdf, percents, summary_text
 
 POOL = 150  # candidates handed to the selection step when there is no price history

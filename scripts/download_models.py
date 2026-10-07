@@ -1,7 +1,7 @@
 """Download the local models from Hugging Face into models/ (ignored by Git).
 
-Sin argumentos: Whisper base (voz a texto), una voz Piper en castellano (texto a voz) y
-Gemma 3 1B cuantizado (filtro en CPU). Alrededor de 1 GB.
+Sin argumentos: Whisper small (voz a texto), una voz Piper en castellano (texto a voz) y
+Gemma 3 1B cuantizado (filtro en CPU). Alrededor de 1,3 GB.
 
     --gpu    añade Gemma 3 4B (8 GB) para el filtro en GPU y Whisper large-v3-turbo (1,6 GB)
     --omni   añade Gemma 3n E2B (11 GB) para la versión de modelo único

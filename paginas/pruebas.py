@@ -6,7 +6,7 @@ import sys
 import streamlit as st
 
 from src import ai_filter, hf_model, history, omni, semantic, tts
-from src.paths import BROCHURES, GPU_LLM_PATH, LLM_PATH, OMNI_PATH, PIPER_VOICE, PRIVATE_CATALOG, ROOT, WHISPER_DIR, WHISPER_GPU_DIR
+from src.paths import BROCHURES, GPU_LLM_PATH, LLM_PATH, PIPER_VOICE, PRIVATE_CATALOG, ROOT, WHISPER_DIR, WHISPER_GPU_DIR
 
 st.title("Pruebas y estado")
 
