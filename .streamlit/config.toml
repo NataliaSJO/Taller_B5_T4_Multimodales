@@ -1,0 +1,18 @@
+# Solo accesible desde este equipo. Para abrirlo a la red local, cambia address a "0.0.0.0".
+[server]
+address = "localhost"
+port = 8501
+headless = true
+# Sin recarga automática: evita volver a cargar los modelos al editar archivos.
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false
+
+# Colores y tipografía de la página
+[theme]
+primaryColor = "#087f8c"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f1f6f8"
+textColor = "#1f2933"
+font = "sans serif"

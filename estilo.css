@@ -1,0 +1,17 @@
+/* Aspecto de la página. Edita este archivo y recarga el navegador.
+   Los colores base (fondo, texto, color principal) están en .streamlit/config.toml. */
+
+h1, h2, h3 {
+    color: #173553;
+}
+
+/* Burbujas de la conversación */
+[data-testid="stChatMessage"] {
+    border-radius: 12px;
+    padding: 0.8rem 1rem;
+}
+
+/* Tiempos y avisos pequeños */
+[data-testid="stCaptionContainer"] {
+    color: #5b6b76;
+}

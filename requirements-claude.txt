@@ -1,0 +1,2 @@
+# Solo si se habilita el filtro con Claude (AI_FILTER=claude)
+anthropic>=1,<2

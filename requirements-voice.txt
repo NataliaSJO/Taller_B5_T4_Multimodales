@@ -1,3 +1,0 @@
--r requirements.txt
-faster-whisper>=1.1,<2
-av>=14,<19

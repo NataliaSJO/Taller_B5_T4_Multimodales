@@ -66,6 +66,22 @@ class RankingTests(unittest.TestCase):
         self.assertIsNone(results[0].fund.sharpe_5y)
         self.assertIn("sin Sharpe", results[0].rationale)
 
+    def test_share_classes_of_one_fund_are_grouped(self):
+        from src.recommender import _family_name
+        names = ("DNB Technology IA EUR in GB**", "DNB Fund - Technology retail A (N)", "DNB Fund Technology retail A")
+        self.assertEqual({_family_name(name) for name in names}, {"dnb technology"})
+        self.assertNotEqual(_family_name("Amundi Global Equity A"), _family_name("Amundi Global Equity Income A"))
+
+    def test_retail_class_is_preferred_for_small_amounts(self):
+        from dataclasses import replace
+        base = next(fund for fund in self.funds if fund.isin == "DEMO000002")
+        inst = replace(base, isin="INST", name=base.name + " Institutional", return_5y=base.return_5y + 0.05)
+        funds = [inst, replace(base, name=base.name + " Retail A")]
+        small, _ = recommend(funds, Preferences(5, "medio", "EUR", amount=5000))
+        large, _ = recommend(funds, Preferences(5, "medio", "EUR", amount=500000))
+        self.assertEqual([item.fund.isin for item in small], ["DEMO000002"])
+        self.assertEqual([item.fund.isin for item in large], ["INST"])
+
     def test_fixed_income_does_not_return_mixed_fund(self):
         results, _ = recommend(self.funds, Preferences(5, "bajo", "EUR", asset_class="renta fija"))
         self.assertEqual([item.fund.isin for item in results], ["DEMO000001"])

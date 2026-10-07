@@ -2,39 +2,43 @@
 
 ## Una idea en 30 segundos
 
-**Problema:** elegir entre miles de clases de fondos exige traducir una necesidad cotidiana en filtros técnicos, identificar qué datos están verificados y explicar la decisión sin esconder incertidumbre.
+**Problema:** elegir entre miles de clases de fondos exige traducir una necesidad cotidiana en filtros técnicos y explicar la decisión sin esconder la incertidumbre.
 
-**Producto:** una aplicación que entiende una petición escrita o hablada, pide confirmar los datos esenciales y devuelve una preselección con cifras históricas, fuentes y razones visibles. La voz, el texto, el gráfico y el resumen hablado cumplen funciones distintas del mismo flujo.
+**Producto:** una página con la que se conversa por voz o texto. Pregunta en voz alta lo que le falta, hace las preguntas que haría un asesor y entrega un informe PDF con una cartera de fondos y un audio que la resume. Todo con modelos locales.
 
 **Usuario inicial:** estudiantes de finanzas y profesionales en fase de exploración. Un canal B2B2C con asesores regulados sería una evolución, no una capacidad actual.
 
-## Demo de 90 segundos
+## Demo de 2 minutos
 
-1. Arranca `streamlit run app.py` y enseña el aviso de catálogo sintético.
-2. Escribe: «Quiero invertir 10.000 euros a 5 años, con riesgo medio, en un fondo global».
-3. Pulsa *Interpretar petición*. Explica que el usuario confirma plazo, riesgo y moneda antes de recomendar.
-4. Pulsa *Obtener propuesta*. Enseña tabla, gráfico, razones e ISIN/ID de ejemplo. Escucha el resumen.
-5. Prueba «sin tecnología»: el sistema se abstiene porque no puede garantizar la exclusión con la composición parcial.
-6. Muestra la opción de audio y explica el módulo Whisper local. Si se dispone del modelo, transcribe la petición en vivo.
+1. Doble clic en `iniciar.bat` (o `streamlit run app.py`).
+2. Di o escribe: «Quiero invertir 10.000 euros en fondos de tecnología, bien diversificado». La página pregunta en voz alta por el plazo y el riesgo.
+3. Responde: «A cinco años y riesgo alto». Pregunta por objetivo, experiencia y reacción ante caídas.
+4. Responde: «Quiero hacer crecer el dinero, nunca he invertido y si cae vendería». Baja el riesgo a medio, lo explica y propone la cartera.
+5. Escucha el resumen y descarga el PDF.
+6. Repite la conversación en la página «Modelo único» y compara tiempos y errores.
 
-## Diferencia frente a una lista de rentabilidad
+## Qué lo diferencia de una lista de rentabilidades
 
-El ranking exige datos recientes, respeta la divisa y un límite de volatilidad elegido por el usuario, y no utiliza regiones o sectores sin fuente asociada. La interpretación mediante LLM es optativa; no delegamos al modelo la puntuación financiera. El usuario puede revisar lo que entendió el sistema.
+- Las cifras salen siempre del catálogo, nunca del modelo de lenguaje.
+- La IA elige y reparte solo entre fondos que ya cumplen divisa, datos recientes y límite de volatilidad, y su respuesta se valida.
+- Comprueba la coherencia del perfil: si las respuestas no sostienen el riesgo declarado, lo baja y lo dice.
+- Marca lo que no está verificado (zona y sector por nombre, mínimos de suscripción).
 
-## Ingeniería y evolución
+## Ingeniería
 
 ```mermaid
 flowchart TD
-    I[Texto / voz] --> A[Whisper si voz]
-    A --> E[Extracción local o LLM estructurado]
-    I --> E
-    E --> C[Confirmación humana]
-    C --> F[Filtros con evidencia]
-    F --> S[Ranking determinista]
-    S --> O[Tabla / gráfico / voz]
-    D[Catálogo privado EODHD] --> F
+    I[Voz por micrófono] --> A[Whisper]
+    A --> E[Reglas de extracción]
+    E --> C{¿Falta algo?}
+    C -- sí --> Q[Pregunta con Piper] --> I
+    C -- no --> F[Filtros sobre el catálogo EODHD]
+    F --> S[Gemma decide criterios, elige y reparte]
+    S --> O[PDF + audio con Piper]
 ```
 
-**Siguiente iteración:** incorporación de folletos y documentos de datos fundamentales mediante extracción visual/OCR, verificación de composición completa y costes reales; control de clases equivalentes; evaluación con peticiones etiquetadas; pruebas de latencia y seguridad; asesoramiento legal sobre idoneidad. Estas funciones no se atribuyen al MVP actual.
+La versión alternativa sustituye Whisper, las reglas, las preguntas y Gemma 3 4B por un único Gemma 3n. Ver la comparación en el README.
 
-**Economía:** demo local sin coste de API; la transcripción local consume CPU; la extracción LLM opcional se factura por tokens. Un posible ingreso futuro es licencia B2B2C, sujeto a controles y autorizaciones regulatorias.
+**Siguiente iteración:** composición y costes reales desde folletos y KID, mínimos de suscripción, correlaciones para optimizar el reparto, evaluación con peticiones etiquetadas, revisión legal de idoneidad.
+
+**Economía:** sin coste de API. La instalación básica corre en CPU; el filtro con Gemma 3 4B y la versión de modelo único necesitan GPU. Claude por API está preparado como alternativa de pago y deshabilitado.

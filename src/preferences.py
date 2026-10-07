@@ -1,6 +1,5 @@
 """Extract explicit investment preferences from Spanish natural language."""
 
-import os
 import re
 import unicodedata
 
@@ -24,6 +23,11 @@ ASSET_CLASSES = {
     "renta variable": ("renta variable", "acciones"),
     "mixto": ("mixto", "mixta", "mixtos", "mixtas"),
     "monetario": ("monetario", "monetarios", "liquidez"),
+}
+DIVERSIFICATION = {
+    "baja": r"\b(un solo fondo|un unico fondo|pocos fondos|concentrad[oa]s?|sin diversificar|poco diversificad[oa])\b",
+    "alta": r"\b(muy diversificad[oa]s?|mucha diversificacion|maxima diversificacion|diversificar (?:mucho|al maximo)|muchos fondos|bien repartid[oa])\b",
+    "media": r"\b(diversificad[oa]s?|diversificar|diversificacion|repartid[oa]|varios fondos)\b",
 }
 WORDS = {"un": 1, "uno": 1, "una": 1, "dos": 2, "tres": 3, "cuatro": 4,
          "cinco": 5, "seis": 6, "siete": 7, "ocho": 8, "nueve": 9, "diez": 10}
@@ -86,81 +90,7 @@ def parse_heuristic(text: str) -> Preferences:
                      if any(re.search(rf"\b{re.escape(word)}\b", clean) for word in words)}
     asset_class = ("mixto" if {"renta fija", "renta variable"}.issubset(asset_matches)
                    else next(iter(asset_matches)) if len(asset_matches) == 1 else None)
-    return Preferences(horizon_years=horizon, risk=risk, currency=currency,
+    diversification = next((level for level, pattern in DIVERSIFICATION.items() if re.search(pattern, clean)), None)
+    return Preferences(horizon_years=horizon, risk=risk, currency=currency, diversification=diversification,
                        amount=_amount(clean), region=region, sector=sector,
                        excluded_sectors=tuple(excluded), asset_class=asset_class)
-
-
-def parse_with_optional_llm(text: str, use_llm: bool = False) -> tuple[Preferences, str]:
-    base = parse_heuristic(text)
-    router_key = os.getenv("OPENROUTER_API_KEY")
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if not use_llm or not (router_key or openai_key):
-        return base, "Reglas locales"
-    try:
-        from openai import OpenAI
-        from pydantic import BaseModel, ConfigDict
-
-        class Extracted(BaseModel):
-            model_config = ConfigDict(extra="forbid")
-
-            horizon_years: int | None
-            risk: str | None
-            currency: str | None
-            amount: float | None
-            region: str | None
-            sector: str | None
-            excluded_sectors: list[str]
-            asset_class: str | None
-
-        messages = [
-            {"role": "system", "content": "Extrae únicamente preferencias explícitas del texto en español. No infieras edad, ingresos, situación patrimonial ni tolerancia al riesgo. Usa null si falta un dato. Riesgo: bajo, medio o alto. Moneda ISO. Clase de activo: renta fija, renta variable, mixto o monetario. No recomiendes productos."},
-            {"role": "user", "content": text[:4000]},
-        ]
-        if router_key:
-            model = os.getenv("OPENROUTER_MODEL", "openai/gpt-6-luna")
-            client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=router_key,
-                            timeout=20.0, max_retries=1)
-            extra_body = {"provider": {"require_parameters": True}}
-            if model.startswith("openai/gpt-6-luna"):
-                extra_body["reasoning"] = {"effort": "none"}
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                response_format={"type": "json_schema", "json_schema": {
-                    "name": "fund_preferences", "strict": True,
-                    "schema": Extracted.model_json_schema(),
-                }},
-                extra_body=extra_body,
-            )
-            parsed = Extracted.model_validate_json(response.choices[0].message.content)
-            method = f"OpenRouter ({model}) + validación local"
-        else:
-            client = OpenAI(api_key=openai_key, timeout=20.0, max_retries=1)
-            response = client.responses.parse(
-                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-                input=messages,
-                text_format=Extracted,
-            )
-            parsed = response.output_parsed
-            method = "OpenAI + validación local"
-        if parsed is None:
-            return base, "Reglas locales (respuesta del modelo no utilizable)"
-        risk = parsed.risk if parsed.risk in ("bajo", "medio", "alto") else None
-        currency = parsed.currency.upper() if parsed.currency and re.fullmatch(r"[A-Za-z]{3}", parsed.currency) else None
-        horizon = parsed.horizon_years if parsed.horizon_years and 1 <= parsed.horizon_years <= 50 else None
-        amount = parsed.amount if parsed.amount and 0 < parsed.amount < 1_000_000_000 else None
-        extracted = Preferences(
-            horizon_years=horizon or base.horizon_years,
-            risk=risk or base.risk,
-            currency=currency or base.currency,
-            amount=amount or base.amount,
-            region=parsed.region or base.region,
-            sector=parsed.sector or base.sector,
-            excluded_sectors=tuple(parsed.excluded_sectors or base.excluded_sectors),
-            asset_class=parsed.asset_class if parsed.asset_class in ASSET_CLASSES else base.asset_class,
-        )
-        return extracted, method
-    except Exception:
-        provider = "OpenRouter" if router_key else "OpenAI"
-        return base, f"Reglas locales ({provider} no disponible)"
