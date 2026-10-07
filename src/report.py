@@ -75,6 +75,62 @@ def summary_text(proposal: Proposal, preferences: Preferences, notes: list[str] 
     return " ".join(parts)
 
 
+def _round(value: float) -> str:
+    return f"{value * 100:.0f}"
+
+
+def brief_summary(proposal: Proposal, preferences: Preferences, notes: list[str] = (), analysis=None,
+                  reviewed: int = 0) -> str:
+    """Under a minute, in plain words: what kind of portfolio this is and how it has behaved as a
+    whole. Fund names and weights are on screen and in the PDF; they are told only if asked for."""
+    years = preferences.horizon_years
+    currency = CURRENCY_NAMES.get(preferences.currency, preferences.currency)
+    count = len(proposal.items)
+    weights = list(investment_allocation(proposal.weights, preferences.amount).weights)
+    parts = [*notes]
+    looked = f"Después de revisar {reviewed} fondos, " if reviewed else ""
+    parts.append(f"{looked}{'he' if looked else 'He'} preparado una cartera de "
+                 f"{'un fondo' if count == 1 else f'{count} fondos'} en {currency}, pensada para "
+                 f"{years} {'año' if years == 1 else 'años'} y un riesgo {preferences.risk}.")
+
+    kinds = {}
+    for item in proposal.items:
+        assets = item.fund.assets.lower()
+        kind = ("mixtos" if "mixt" in assets or ("renta fija" in assets and "renta variable" in assets)
+                else "de renta variable" if "renta variable" in assets
+                else "de renta fija" if "renta fija" in assets
+                else "monetarios" if "monetario" in assets else None)
+        if kind:
+            kinds[kind] = kinds.get(kind, 0) + 1
+    if sum(kinds.values()) >= max(2, count - 1):      # only when the documents describe most of them
+        mix = [f"{number} {kind}" for kind, number in sorted(kinds.items(), key=lambda pair: -pair[1])]
+        parts.append("Son " + (", ".join(mix[:-1]) + " y " + mix[-1] if len(mix) > 1 else mix[0]) + ".")
+    if count > 1:
+        parts.append(f"El dinero queda repartido y ningún fondo pesa más del {_round(max(float(w) for w in weights))} por ciento.")
+
+    if analysis:
+        span = max(1, round(analysis.points[-1][0]))
+        yearly = (1 + analysis.total_return) ** (1 / max(analysis.points[-1][0], 0.5)) - 1
+        parts.append(f"En {'el último año' if span == 1 else f'los últimos {span} años'}, esta cartera en conjunto "
+                     f"habría ganado un {_round(analysis.total_return)} por ciento, alrededor de un {_round(yearly)} "
+                     f"por ciento al año. Por el camino llegó a caer un {_round(abs(analysis.max_drawdown))} por ciento "
+                     "desde su punto más alto, así que hay que contar con baches así.")
+        if analysis.worst_year is not None:
+            parts.append(f"Su peor año fue de un {_round(analysis.worst_year)} por ciento "
+                         f"y el mejor de un {_round(analysis.best_year)}.".replace("un -", "un menos "))
+    else:
+        window = metric_years(years)
+        weighted = sum(item.fund.metrics(years)[0] * float(weight) for item, weight in zip(proposal.items, weights))
+        parts.append(f"En {'el último año' if window == 1 else f'los últimos {window} años'}, estos fondos, con este "
+                     f"reparto, acumularon una rentabilidad del {_round(weighted)} por ciento.")
+    costs = [item.fund.costs for item in proposal.items if item.fund.costs is not None]
+    if len(costs) >= max(2, count - 1):
+        parts.append(f"Sus costes rondan el {_spoken(sum(costs) / len(costs) / 100)} por ciento al año.")
+    parts.append("Tienes los fondos, los pesos y el informe en pantalla. Recuerda que es una orientación educativa, "
+                 "no un asesoramiento. ¿Quieres que te cuente el detalle de cada fondo?")
+    return " ".join(parts)
+
+
 def _text(value) -> str:
     """Escape for Paragraph markup and keep to the characters Helvetica can draw."""
     return escape(str(value).encode("cp1252", "replace").decode("cp1252"))

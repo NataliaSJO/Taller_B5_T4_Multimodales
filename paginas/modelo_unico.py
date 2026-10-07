@@ -26,15 +26,18 @@ def handle(text: str, audio: list[str], images: list[str], funds, source: str):
             return
         new, transcript, ask = parse_turn(text, state.pending), text, ""
     state.messages.append({"role": "user", "text": transcript or text or "(mensaje de voz)"})
+    if ui.detail_reply(transcript or text):
+        return
     if not ui.update_preferences(new, transcript or text):
         return
     if state.pending:
         ui.say(question(state.profile))
     elif not state.get("extra_asked") and extra_question(state.profile):
         state.extra_asked = True
+        ui.start_screening(funds, omni.decide, omni.shortlist)
         ui.say(ask or extra_question(state.profile))
     else:
-        ui.propose(funds, source, omni.select, omni.decide)
+        ui.propose(funds, source, omni.select, omni.decide, omni.shortlist)
 
 
 funds, source, is_demo = ui.catalog()

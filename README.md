@@ -51,9 +51,10 @@ flowchart LR
 | Filtrar el catálogo, búsqueda semántica e histórico diario | 2–3 s |
 | Elegir y repartir (Gemma 3 4B) | unos 8 s |
 | Informe y voz del resumen | 3–5 s |
-| **Propuesta completa** | **25–35 s** |
+| **Propuesta completa, hecha de una vez** | **25–35 s** |
+| **Propuesta tras conversar por voz** (lo adelantado en segundo plano) | **unos 11 s** |
 
-Una conversación de tres turnos por voz tarda en total unos 90 s. Los turnos de preguntas son fluidos; la propuesta no lo es todavía, y por eso la página va diciendo en qué paso está. Sin GPU la propuesta tarda parecido porque el modelo es más pequeño y ve menos candidatos, a costa de calidad.
+Una conversación de tres turnos por voz tarda en total unos 80 s. En cuanto se conocen plazo, riesgo y divisa, un hilo en segundo plano decide los criterios, filtra el catálogo y lee el histórico mientras la página hace las preguntas de asesor; cuando el cliente contesta solo queda elegir. Si responde de inmediato (por escrito), la espera vuelve a ser de unos 20 s. Sin GPU el modelo es más pequeño y ve menos candidatos, a costa de calidad.
 
 **Normativa.** Proponer una cartera con pesos a una persona concreta es asesoramiento en materia de inversión: en España solo puede prestarlo una entidad autorizada, con test de idoneidad (MiFID II) y entrega del documento de datos fundamentales de cada producto (PRIIPs). Este MVP pregunta por objetivo, experiencia y tolerancia a pérdidas y baja el riesgo si no cuadran, pero eso no es un test de idoneidad. Por eso el modelo de negocio es B2B2C. La voz es un dato personal (RGPD): el audio se transcribe en local y no se guarda; la voz neuronal de las respuestas envía a un tercero el texto de la respuesta, no la voz del cliente, y se puede desactivar. El catálogo EODHD tiene licencia y no está en el repositorio.
 
@@ -202,10 +203,10 @@ flowchart LR
 2. **Preguntas de asesor.** Una vez, y se pueden saltar: objetivo (crecer, conservar, rentas), experiencia y reacción ante una caída del 20 %. Si las respuestas no sostienen el riesgo declarado, se baja un nivel y se explica.
 3. **El modelo decide los criterios.** A partir de la conversación transcrita fija cuánto pesan el ajuste al riesgo, el Sharpe y la rentabilidad, la volatilidad objetivo, una rentabilidad mínima y, si el cliente pidió un tema («oro», «tecnología»), las palabras que deben aparecer en el nombre del fondo.
 4. **El código los aplica a todo el catálogo.** Siempre se descartan los fondos de otra divisa, sin datos recientes o por encima de la volatilidad máxima del perfil (bajo 10 %, medio 20 %, alto 35 %): el modelo no puede subir el riesgo. Una ficha verificada que contradiga la preferencia no se sustituye por una coincidencia en el nombre. Se agrupan las posibles clases de participación por nombre, conservando números de índices y términos de cobertura; esta agrupación es aproximada.
-5. **El modelo elige y reparte.** Ve los 150 mejores candidatos con sus cifras y devuelve qué fondos y con qué peso. Se respeta un número concreto solicitado de 1 a 7 fondos; «un solo fondo» recibe el 100 %. Si no se indica, se eligen entre 2 y 7 según la diversificación. Si faltan candidatos, se explica cuántos hay disponibles.
+5. **El modelo elige y reparte.** Tras los filtros quedan hasta 2.000 candidatos. Con el histórico diario se agrupan los que se mueven muy parecido (correlación semanal superior a 0,9) y el modelo lee una línea por grupo, la del mejor fondo: 150 líneas representan a muchos más fondos (1.600 en una prueba sin tema concreto). Si la conversación da tiempo, el modelo criba además los grupos siguientes por lotes de 100 y sus elegidos entran en la lista final. Devuelve qué fondos y con qué peso. Se respeta un número concreto solicitado de 1 a 7 fondos; «un solo fondo» recibe el 100 %. Si no se indica, se eligen entre 2 y 7 según la diversificación. Sin el histórico diario, el modelo lee los 150 mejores candidatos.
 6. **Validación.** Solo se aceptan fondos de la lista y pesos numéricos finitos. Tanto el modelo como las reglas respetan un mínimo del 5 % y un máximo del 60 % por fondo (80 % si hay dos; 100 % si solo hay uno). Si el modelo falla o su reparto no es válido, deciden las reglas: inversa de la volatilidad, o más peso a los fondos que mejor encajan si el objetivo es crecer.
 7. **Segunda mirada con el histórico diario.** Si dos fondos elegidos se mueven casi igual (correlación semanal superior a 0,95), el peor colocado se sustituye por el siguiente candidato. Cuando deciden las reglas, el reparto pasa a ser por paridad de riesgo con las correlaciones reales.
-8. **Entrega.** PDF con la conversación, el perfil, los criterios, la cartera y el porqué de cada fondo; la evolución real que habría tenido la cartera, con su volatilidad y su caída máxima; y, en otro gráfico, tres escenarios para el plazo pedido según el peor, el mediano y el mejor año de su historia. Además, un audio con el resumen. Los importes se asignan a céntimos conservando el total y los límites de concentración.
+8. **Entrega.** La página resume la cartera de viva voz en menos de un minuto, en lenguaje llano y sin nombres ni pesos: cuántos fondos, de qué tipo, cuánto habría ganado y cuánto llegó a caer en conjunto. Después pregunta si se quiere el detalle y, solo entonces, lee fondo a fondo. En pantalla y en el PDF están siempre la conversación, el perfil, los criterios, la cartera y el porqué de cada fondo; la evolución real que habría tenido la cartera, con su volatilidad y su caída máxima; y, en otro gráfico, tres escenarios para el plazo pedido según el peor, el mediano y el mejor año de su historia. Los importes se asignan a céntimos conservando el total y los límites de concentración.
 
 Se reconocen importes en EUR, USD, GBP y CHF, con cifras o expresados en español («diez mil euros», «10.000 dólares», «ciento veinte euros con cincuenta céntimos»). Los importes negativos, nulos o no interpretables que se detecten requieren aclaración; no se transforman en cantidades positivas. Cuando se pregunta por el importe, se puede contestar solo con la cantidad. El importe sigue siendo opcional si no se ha indicado.
 
@@ -214,7 +215,7 @@ Los pasos 3 y 5 con 150 candidatos necesitan el filtro en GPU (o Claude). Con Ge
 ### Límites que conviene conocer
 
 - **Las cifras nunca salen del modelo.** Rentabilidades, volatilidades y motivos por fondo vienen del catálogo.
-- **El modelo no lee los 92.257 fondos uno a uno.** No caben en su contexto: decide los criterios, el código los aplica a todos y el modelo elige entre los 150 mejores.
+- **El modelo no lee los 92.257 fondos uno a uno.** No caben en su contexto: decide los criterios, el código los aplica a todos y el modelo elige entre una línea por grupo de fondos parecidos. La página dice cuántos fondos ha tenido en cuenta. La criba por lotes solo ocurre si la conversación deja tiempo; en una charla de tres turnos no llega a empezar.
 - **Zona y sector solo están verificados donde hay folleto.** Para el resto, las preferencias se comprueban con el nombre del fondo y el informe lo marca como «exposición no verificada».
 - **La inversión mínima solo se conoce donde hay ficha** (unos 1.700 fondos); esos se descartan si el mínimo supera el importe. Para el resto, por debajo de 100.000 se prefiere, entre las clases de un mismo fondo, la que no parece institucional; el mínimo real hay que mirarlo en el folleto.
 - **Las exclusiones por sector no se pueden garantizar** sin la composición completa; la app lo dice y pregunta si sigue sin ellas.
@@ -271,7 +272,7 @@ Las dos comparten catálogo, filtros, validación, PDF y voz, así que la difere
 
 **Primera comparación.** Es una sola conversación de tres turnos hablados, con audios generados por Piper y un micrófono simulado en el navegador; no es una evaluación.
 
-- **Especialistas:** transcribió y extrajo bien los datos y entregó la propuesta en el tercer turno. Las preguntas tardan 1–3 s; la propuesta, 25–35 s con los modelos ya cargados.
+- **Especialistas:** transcribió y extrajo bien los datos y entregó la propuesta en el tercer turno. Las preguntas tardan 1–3 s; la propuesta, unos 11 s tras conversar por voz.
 - **Modelo único:** transcribió bien, pero no dedujo la divisa de «10.000 euros» y siguió preguntando, así que no llegó a la propuesta en tres turnos. Cada turno tarda unos 18 s. Sus preguntas suenan más naturales.
 
 ## Modelos candidatos por paso
@@ -322,7 +323,8 @@ scripts/import_catalog.py  Conversión del Markdown EODHD a CSV
 scripts/procesar_folletos.py  Lectura de DFI, KID y fichas a una fila por fondo
 src/brochures.py           Uso de esa documentación en la recomendación
 src/semantic.py            Búsqueda semántica sobre los objetivos de los folletos
-src/history.py             Histórico diario: correlaciones, paridad de riesgo, evolución y escenarios
+src/history.py             Histórico diario: caídas, grupos de fondos parecidos, paridad de riesgo, evolución y escenarios
+src/screening.py           Trabajo en segundo plano durante la conversación y una línea por grupo de fondos
 src/money.py               Importes en español y reparto al céntimo
 data/demo_funds.csv        Catálogo sintético
 data/private/, models/     Catálogo real y modelos, ignorados por Git

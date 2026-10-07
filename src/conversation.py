@@ -157,6 +157,19 @@ def advise(profile: Preferences) -> tuple[Preferences, list[str]]:
     return replace(profile, risk=risk), notes
 
 
+def wants_more(text: str) -> bool | None:
+    """Answer to «¿quieres el detalle?»: True, False, or None when the client is talking about something else."""
+    clean = normalize(text).strip(" .!¿?¡,")
+    words = clean.split()
+    if re.search(r"\b(detall\w*|cuenta\w*|explica\w*|mas informacion|mas info|quiero saber|dime)\b", clean):
+        return not re.search(r"^no\b|\bno hace falta\b|\bno quiero\b", clean)
+    if len(words) <= 6 and re.search(r"^(si|vale|claro|venga|adelante|ok|okey|por favor|de acuerdo|perfecto)\b", clean):
+        return True
+    if len(words) <= 8 and re.search(r"^(no|nada mas|asi esta bien|es suficiente|con eso (?:me )?basta|gracias)\b", clean):
+        return False
+    return None
+
+
 def is_yes(text: str) -> bool:
     return relaxation_answer(text) is True
 

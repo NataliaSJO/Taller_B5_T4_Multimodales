@@ -10,18 +10,17 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from . import brochures, history, semantic, tts
+from . import brochures, history, screening, tts
 from .catalog import load_catalog
-from .conversation import THEMATIC, advise, apply_turn, describe, missing, question, valid_horizon
+from .conversation import THEMATIC, advise, apply_turn, describe, missing, question, valid_horizon, wants_more
 from .models import MAX_HORIZON, Preferences
 from .money import investment_allocation
 from .preferences import ASSET_CLASSES, REGIONS, SECTORS
 from .paths import BROCHURES, DEMO_CATALOG, PRIVATE_CATALOG, ROOT
 from .recommender import recommend
-from .report import DISCLAIMER, build_pdf, percents, summary_text
+from .report import DISCLAIMER, brief_summary, build_pdf, percents, summary_text
 
-POOL = 150  # candidates handed to the selection step
-MIN_CANDIDATES = 10  # fewer than this and the model's optional filters are dropped
+POOL = 150  # candidates handed to the selection step when there is no price history
 
 
 @st.cache_resource(show_spinner="Cargando catálogo y folletos...")
@@ -50,11 +49,14 @@ def catalog() -> tuple[list, str, bool]:
 
 
 # What makes up one conversation. Each version keeps its own, so switching does not lose it.
-CONVERSATION = ("messages", "profile", "pending", "relax", "extra_asked", "relaxed", "speak")
+CONVERSATION = ("messages", "profile", "pending", "relax", "extra_asked", "relaxed", "speak", "detail")
 
 
 def new_conversation(greeting: str):
     state = st.session_state
+    job = state.pop("job", None)
+    if job is not None:
+        job.stop.set()       # background work belongs to the conversation that is ending
     for key in CONVERSATION:
         state.pop(key, None)
     state.messages = [{"role": "assistant", "text": greeting, "audio": _spoken_greeting(greeting)}]
@@ -211,37 +213,70 @@ def update_preferences(new: Preferences, text: str) -> bool:
     return not reply
 
 
-def propose(funds, source: str, select, decide):
+def start_screening(funds, decide, shortlist):
+    """Begin the proposal in the background while the adviser's questions are asked and answered."""
+    state = st.session_state
+    if not state.get("real_data") or state.pending:
+        return
+    profile, _ = advise(state.profile)
+    job = state.get("job")
+    if job is not None and job.key == screening.key_of(profile) and job.risk == profile.risk:
+        return
+    if job is not None:
+        job.stop.set()
+    state.job = screening.start(funds, profile, " ".join(user_turns()), decide, shortlist,
+                                bool(state.get("documents")))
+
+
+def detail_reply(text: str) -> bool:
+    """After the short summary the client was asked whether they want the detail. True when this
+    turn was the answer to that (and has been dealt with); False when they moved on to something else."""
+    state = st.session_state
+    detail = state.pop("detail", None)
+    if detail is None:
+        return False
+    answer = wants_more(text)
+    if answer is True:
+        say(detail)
+    elif answer is False:
+        say("De acuerdo. Tienes la tabla y el informe en pantalla; si quieres cambiar algo, dímelo.")
+    return answer is not None
+
+
+def propose(funds, source: str, select, decide, shortlist=None):
     """All required data is known: filter, select, and build the PDF and the audio summary.
 
     `decide(profile, conversation)` returns the model's search criteria (or None) and
     `select(candidates, profile, conversation)` the Proposal; they are what differs between pages.
+    Whatever a background job has already done for this profile is collected instead of redone.
     """
     state = st.session_state
     profile, notes = advise(state.profile)
     turns = user_turns()
+    conversation = " ".join(turns)
+    real = bool(state.get("real_data")) and history.available()
     progress = st.status("Decidiendo los criterios de búsqueda…")
-    criteria = decide(profile, " ".join(turns))
+
+    job = state.pop("job", None)
+    prices, winners, screened = None, (), 0
+    if job is not None and job.usable_for(profile):
+        progress.update(label="Recogiendo lo que he ido adelantando mientras hablábamos…")
+        job.finish()
+    if job is not None and job.usable_for(profile):
+        criteria, affinity = job.criteria_for(profile), job.affinity
+        prices, winners, screened = job.prices, tuple(job.winners), job.screened
+    else:
+        if job is not None:
+            job.stop.set()
+        criteria = decide(profile, conversation)
+        affinity = screening.affinity_for(profile, criteria, conversation) if state.get("documents") else {}
+    theme = screening.theme_of(profile, criteria)
+
     progress.update(label=f"Buscando entre {len(funds):,} fondos…".replace(",", "."))
-    # Semantic search in the brochures, when they have been processed: by theme if there is one,
-    # otherwise by what the client said (only as a small push, without a model to name the theme).
-    theme = ", ".join(part for part in (*(criteria.keywords if criteria else ()), profile.region,
-                                        profile.sector, profile.asset_class) if part)
-    try:
-        affinity = semantic.search(theme or ("" if criteria else " ".join(turns))) if state.get("documents") else {}
-    except Exception:
-        affinity = {}
-    candidates, diagnostics = recommend(funds, profile, limit=POOL, criteria=criteria, semantic=affinity)
-    if criteria and len(candidates) < MIN_CANDIDATES and (criteria.keywords or criteria.min_annual_return):
-        # The model's optional filters left too few funds: keep its weights and target only.
-        dropped = [f"que el nombre del fondo contuviera «{', '.join(criteria.keywords)}»" if criteria.keywords else "",
-                   f"una rentabilidad anual mínima del {criteria.min_annual_return:.0%}"
-                   if criteria.min_annual_return else ""]
-        notes.append(f"El modelo pedía {' y '.join(part for part in dropped if part)}, pero solo "
-                     f"{len(candidates)} {'fondo lo cumplía' if len(candidates) == 1 else 'fondos lo cumplían'}; "
-                     "he retirado ese filtro para poder comparar más fondos.")
-        criteria = replace(criteria, keywords=(), min_annual_return=None)
-        candidates, diagnostics = recommend(funds, profile, limit=POOL, criteria=criteria, semantic=affinity)
+    candidates, diagnostics, criteria, dropped = screening.search(
+        funds, profile, criteria, affinity, screening.WIDE if real else POOL)
+    if dropped:
+        notes.append(dropped)
     relaxed = state.pop("relaxed", None)
     if relaxed:
         names = {"region": "la zona", "sector": "el sector", "asset_class": "la clase de activo",
@@ -266,18 +301,24 @@ def propose(funds, source: str, select, decide):
             say(f"No encuentro fondos en {profile.currency} con datos suficientes a {profile.horizon_years} años "
                 f"y riesgo {profile.risk}. Dime otra divisa, otro plazo u otro nivel de riesgo y lo vuelvo a intentar.")
         return
-    if state.get("real_data") and history.available():
+
+    # With the daily history, funds that move together count as one: the model reads the best of
+    # each group, so its list stands for many more funds than it has lines.
+    lines, reviewed = candidates, None
+    if real:
         progress.update(label=f"Leyendo el histórico diario de {len(candidates)} candidatos…")
         try:
-            candidates = history.inform(candidates, profile)
+            candidates = history.inform(candidates, profile, prices=prices)
+            lines, represented, in_batches = screening.final_lines(candidates, winners, screened)
+            reviewed = (len(lines), represented, in_batches)
         except Exception:      # the decision goes on with the catalog figures
-            pass
-    progress.update(label=f"Eligiendo entre los {len(candidates)} mejores candidatos…")
-    proposal = select(candidates, profile, " ".join(turns))
+            lines = candidates[:POOL]
+    progress.update(label=f"Eligiendo entre {len(lines)} candidatos…")
+    proposal = select(lines, profile, conversation)
     progress.update(label="Comprobando la cartera con el histórico diario…")
     analysis = None
     if state.get("real_data"):
-        proposal = history.refine(proposal, candidates, profile.horizon_years)
+        proposal = history.refine(proposal, lines, profile.horizon_years)
         try:
             analysis = history.analyse(proposal.items, proposal.weights, profile.horizon_years)
         except Exception:  # the report falls back to the illustrative simulation
@@ -296,10 +337,11 @@ def propose(funds, source: str, select, decide):
         pdf = build_pdf(proposal, profile, turns, source, notes, how, others, analysis)
     except Exception:   # the proposal is still shown and spoken
         pdf = None
-    say(summary_text(proposal, profile, notes), result={
+    state.detail = summary_text(proposal, profile)
+    say(brief_summary(proposal, profile, notes, analysis, sum(reviewed[1:]) if reviewed else 0), result={
         "proposal": proposal, "profile": profile, "eligible": diagnostics["eligible"], "criteria": how,
         "others": others, "excluded": {key: diagnostics.get(key, 0) for key in ("sri", "minimum")},
-        "analysis": analysis, "pdf": pdf, "notes": notes,
+        "analysis": analysis, "pdf": pdf, "notes": notes, "reviewed": reviewed,
         "semantic": (len(affinity), theme) if affinity else None,
     })
     progress.update(label="Propuesta lista", state="complete")
@@ -334,6 +376,11 @@ def _show_result(message: dict, key: int):
                    f"{abs(analysis.max_drawdown) * 100:.1f} %").replace(".", ",")
         st.caption(f"Con el histórico diario de {analysis.weeks} semanas, la cartera en conjunto tuvo "
                    f"{figures}{together}.")
+    if result.get("reviewed"):
+        shown, represented, in_batches = result["reviewed"]
+        st.caption(f"El modelo ha tenido en cuenta {represented + in_batches} fondos: ha leído {shown} líneas, una por "
+                   f"cada grupo de fondos que se mueven muy parecido, que representan a {represented}"
+                   + (f"; y otros {in_batches} los cribó por lotes mientras conversábamos." if in_batches else "."))
     if result.get("semantic"):
         found, theme = result["semantic"]
         st.caption(f"Búsqueda semántica en los folletos: {found} fondos con un objetivo afín"

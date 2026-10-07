@@ -17,6 +17,8 @@ FILTERS = {"gpu": "Gemma 3 4B en GPU", "local": "Gemma 3 1B en CPU", "claude": "
 def handle(text: str, funds, source: str):
     state = st.session_state
     state.messages.append({"role": "user", "text": text})
+    if ui.detail_reply(text):
+        return
     new = parse_turn(text, state.pending)
     if state.get("lector") == MODEL:
         history = [(message["role"], message["text"]) for message in state.messages[:-1]]
@@ -30,9 +32,10 @@ def handle(text: str, funds, source: str):
         ui.say(question(state.profile))
     elif extra:
         state.extra_asked = True
+        ui.start_screening(funds, ai_filter.decide, ai_filter.shortlist)   # works while the question is asked and answered
         ui.say(extra)
     else:
-        ui.propose(funds, source, ai_filter.select, ai_filter.decide)
+        ui.propose(funds, source, ai_filter.select, ai_filter.decide, ai_filter.shortlist)
 
 
 funds, source, is_demo = ui.catalog()

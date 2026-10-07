@@ -364,6 +364,61 @@ def _validated(answer: dict, candidates: list[Recommendation], preferences: Pref
     return chosen, shares, " ".join(str(answer.get("comentario") or "").split())[:400]
 
 
+def _listing(candidates: list[Recommendation], years: int) -> str:
+    """One numbered line per candidate with its figures, as the model sees them."""
+    lines = []
+    for index, item in enumerate(candidates, start=1):
+        ret, vol, sharpe = item.fund.metrics(years)
+        ratio = "sin dato" if sharpe is None else f"{sharpe:+.2f}"
+        extra = "".join((f" | riesgo oficial {item.fund.sri}/7" if item.fund.sri else "",
+                         f" | costes {item.fund.costs:.2f}%" if item.fund.costs is not None else "",
+                         f" | caída máxima {item.drawdown:.0%}" if item.drawdown is not None else ""))
+        lines.append(f"{index}. {item.fund.name} | rentabilidad {metric_years(years)} años {ret:+.1%} | "
+                     f"volatilidad {vol:.1%} | Sharpe {ratio}{extra}")
+    return "\n".join(lines)
+
+
+def shortlist_prompt(candidates: list[Recommendation], preferences: Preferences, conversation: str, keep: int) -> str:
+    target, ceiling = RISK[preferences.risk]
+    return (
+        "Eres un asesor financiero haciendo una primera criba de fondos para un cliente.\n\n"
+        f"Lo que ha dicho el cliente: {conversation}\n"
+        f"Perfil: horizonte {preferences.horizon_years} años; riesgo {preferences.risk} "
+        f"(volatilidad ideal cerca del {target:.0%}, máximo {ceiling:.0%}); divisa {preferences.currency}.\n\n"
+        "Lote de fondos:\n" + _listing(candidates, preferences.horizon_years) + "\n\n"
+        f"Elige los {keep} fondos de este lote que mejor encajan con este cliente, variados entre sí. "
+        'Devuelve solo JSON con esta forma exacta: {"ids": [3, 17, 42]}, con el número que cada fondo tiene en la lista.'
+    )
+
+
+def read_shortlist(answer, candidates: list[Recommendation], keep: int) -> list[str]:
+    """ISINs the model kept from a batch; anything that is not a number of the list is ignored."""
+    ids = answer.get("ids") if isinstance(answer, dict) else None
+    picked = []
+    for value in ids if isinstance(ids, list) else ():
+        if type(value) is int and 1 <= value <= len(candidates):
+            isin = candidates[value - 1].fund.isin
+            if isin not in picked:
+                picked.append(isin)
+    return picked[:keep]
+
+
+def shortlist(candidates: list[Recommendation], preferences: Preferences, conversation: str, keep: int) -> list[str]:
+    """First cut of one batch by the model. Empty when no capable model is active or it fails."""
+    name = backend()
+    if name not in ("gpu", "claude") or not candidates:
+        return []
+    prompt = shortlist_prompt(candidates, preferences, conversation, keep)
+    try:
+        if name == "gpu":
+            answer = parse_json(generate(GPU_LLM_PATH, [{"type": "text", "text": prompt}], 80, four_bit=True))
+        else:
+            answer = _ask_claude(prompt, None)
+        return read_shortlist(answer, candidates, keep)
+    except Exception:
+        return []
+
+
 def distinct(candidates: list[Recommendation], count: int) -> list[Recommendation]:
     """The best `count` candidates without two from the same group of funds that move together."""
     picked, groups = [], set()

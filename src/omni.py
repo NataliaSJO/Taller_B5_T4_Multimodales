@@ -68,6 +68,16 @@ def decide(preferences: Preferences, conversation: str) -> Criteria | None:
         return None
 
 
+def shortlist(candidates: list[Recommendation], preferences: Preferences, conversation: str, keep: int) -> list[str]:
+    """First cut of one batch of funds by the multimodal model."""
+    try:
+        prompt = ai_filter.shortlist_prompt(candidates, preferences, conversation, keep)
+        return ai_filter.read_shortlist(parse_json(generate(OMNI_PATH, [{"type": "text", "text": prompt}], 80)),
+                                        candidates, keep)
+    except Exception:
+        return []
+
+
 def select(candidates: list[Recommendation], preferences: Preferences, conversation: str) -> Proposal:
     """Same task and validation as the specialised filter, answered by the multimodal model."""
     years = preferences.horizon_years

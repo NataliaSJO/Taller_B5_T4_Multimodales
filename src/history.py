@@ -128,37 +128,45 @@ TOLERATED_FALL = {"bajo": 0.10, "medio": 0.25, "alto": 0.45}
 SAME_BET = 0.90      # weekly-return correlation above which two candidates count as one idea
 
 
-def inform(candidates: list[Recommendation], preferences) -> list[Recommendation]:
+def inform(candidates: list[Recommendation], preferences, prices=None) -> list[Recommendation]:
     """Add to each candidate what its daily history says, and let it count in the ranking.
 
     Each fund gets its worst fall and worst twelve months over the horizon, and a group number
     shared by the candidates that move almost together. A fall deeper than the client's risk
     level tolerates (less if they said they would sell) lowers the score. Candidates without
     history are left as they were. The result is sorted best first again.
+
+    `prices` are weekly prices already read (see `weekly_prices`); funds missing from them are
+    left without history instead of being read again.
     """
     if not available() or not candidates:
         return candidates
-    years = preferences.horizon_years
-    prices = weekly_prices([item.fund.isin for item in candidates], years)
+    if prices is None:
+        prices = weekly_prices([item.fund.isin for item in candidates], preferences.horizon_years)
     if prices.empty:
         return candidates
-    returns = prices.pct_change(fill_method=None)
-    correlation = returns.corr(min_periods=MIN_WEEKS)
+    known = [item.fund.isin for item in candidates if item.fund.isin in prices.columns]
+    prices = prices[known]
+    enough = prices.count() >= MIN_WEEKS
+    correlation = prices.pct_change(fill_method=None).corr(min_periods=MIN_WEEKS).to_numpy()
+    column = {isin: position for position, isin in enumerate(known)}
     falls = (prices / prices.cummax() - 1).min()
     worst = prices.pct_change(52, fill_method=None).min() if len(prices) > 52 + MIN_WEEKS else None
     tolerated = TOLERATED_FALL[preferences.risk] * (0.7 if preferences.loss_reaction == "vende" else 1.0)
 
-    leaders: list[str] = []      # one fund per group, in ranking order
+    leaders: list[int] = []      # column of one fund per group, in ranking order
     informed = []
     for item in candidates:
         isin = item.fund.isin
-        if isin not in prices.columns or prices[isin].count() < MIN_WEEKS:
+        if isin not in column or not enough[isin]:
             informed.append(item)
             continue
-        group = next((number for number, leader in enumerate(leaders, start=1)
-                      if correlation.at[isin, leader] > SAME_BET), None)
-        if group is None:
-            leaders.append(isin)
+        position = column[isin]
+        close = (correlation[position, leaders] > SAME_BET).nonzero()[0] if leaders else ()
+        if len(close):
+            group = int(close[0]) + 1
+        else:
+            leaders.append(position)
             group = len(leaders)
         fall = float(falls[isin])
         year = float(worst[isin]) if worst is not None and worst[isin] == worst[isin] else None
