@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+  /* Conversación manos libres: la página habla, escucha hasta que callas y envía sola. */
+  body { margin: 0; font-family: system-ui, "Segoe UI", sans-serif; color: #1f2933; }
+  .caja { display: flex; align-items: center; gap: 16px; padding: 12px 16px; border-radius: 12px; background: #f1f6f8; }
+  button { border: 0; border-radius: 999px; padding: 12px 22px; font-size: 1rem; cursor: pointer;
+           background: #087f8c; color: #fff; white-space: nowrap; }
+  button.parar { background: #fff; color: #173553; border: 1px solid #c9d6dc; }
+  #estado { font-size: 1rem; flex: 1; }
+  #nivel { width: 90px; height: 8px; border-radius: 4px; background: #dbe5ea; overflow: hidden; }
+  #nivel span { display: block; height: 100%; width: 0; background: #087f8c; transition: width 80ms linear; }
+</style>
+</head>
+<body>
+<div class="caja">
+  <button id="boton">🎧 Empezar conversación</button>
+  <div id="estado">Pulsa una vez y habla con normalidad. No hace falta tocar nada más.</div>
+  <div id="nivel"><span></span></div>
+</div>
+<script>
+// --- Protocolo de componentes de Streamlit (sin librerías) ---
+function enviar(type, datos) { window.parent.postMessage({ isStreamlitMessage: true, type, ...datos }, "*"); }
+function valor(v) { enviar("streamlit:setComponentValue", { value: v, dataType: "json" }); }
+
+const SILENCIO_MS = 1300;      // silencio que da por terminada la frase
+const MAX_FRASE_MS = 30000;    // duración máxima de una intervención
+const ESPERA_MS = 60000;       // sin voz durante este tiempo, deja de escuchar
+const boton = document.getElementById("boton");
+const estado = document.getElementById("estado");
+const barra = document.querySelector("#nivel span");
+
+let activo = false;            // el usuario ha pulsado «Empezar»
+let fase = "parado";           // parado | hablando | escuchando | pensando
+let ultimoId = null;           // último turno del asesor ya atendido
+let pendiente = "";            // audio del asesor aún no reproducido
+let audio = null, flujo = null, contexto = null, grabadora = null, bucle = null;
+
+function mostrar(texto, nuevaFase) { fase = nuevaFase; estado.textContent = texto; }
+
+function soltarMicro() {
+  if (bucle) { cancelAnimationFrame(bucle); bucle = null; }
+  if (flujo) { flujo.getTracks().forEach(t => t.stop()); flujo = null; }
+  if (contexto) { contexto.close(); contexto = null; }
+  barra.style.width = "0";
+}
+
+function hablar() {
+  soltarMicro();                       // el micrófono no oye la voz del asesor
+  if (!pendiente) { escuchar(); return; }
+  mostrar("🔊 Hablando…", "hablando");
+  audio = new Audio("data:audio/wav;base64," + pendiente);
+  pendiente = "";
+  audio.onended = () => { if (activo) escuchar(); };
+  audio.play().catch(() => { if (activo) escuchar(); });
+}
+
+async function escuchar() {
+  try {
+    flujo = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (error) {
+    activo = false; boton.textContent = "🎧 Empezar conversación"; boton.className = "";
+    mostrar("No puedo usar el micrófono. Da permiso en el navegador o usa «Pulsar para hablar».", "parado");
+    return;
+  }
+  mostrar("🎙️ Te escucho…", "escuchando");
+  contexto = new AudioContext();
+  contexto.resume();
+  const analizador = contexto.createAnalyser();
+  analizador.fftSize = 1024;
+  contexto.createMediaStreamSource(flujo).connect(analizador);
+  const muestras = new Float32Array(analizador.fftSize);
+
+  const trozos = [];
+  grabadora = new MediaRecorder(flujo);
+  grabadora.ondataavailable = e => { if (e.data.size) trozos.push(e.data); };
+  grabadora.start();
+
+  const inicio = performance.now();
+  let suelo = null, hayVoz = false, vozDesde = 0, ultimaVoz = 0, enviado = false;
+
+  function terminar(conVoz) {
+    if (enviado) return;
+    enviado = true;
+    const tipo = grabadora.mimeType || "audio/webm";
+    grabadora.onstop = () => {
+      soltarMicro();
+      if (!conVoz) { activo = false; boton.textContent = "🎧 Seguir conversando"; boton.className = "";
+                     mostrar("He dejado de escuchar. Pulsa para seguir.", "parado"); return; }
+      mostrar("💭 Pensando…", "pensando");
+      const lector = new FileReader();
+      lector.onloadend = () => valor({ id: Date.now(), audio: lector.result.split(",")[1], mime: tipo });
+      lector.readAsDataURL(new Blob(trozos, { type: tipo }));
+    };
+    grabadora.stop();
+  }
+
+  function medir() {
+    if (!flujo || enviado) return;
+    analizador.getFloatTimeDomainData(muestras);
+    let suma = 0;
+    for (const m of muestras) suma += m * m;
+    const nivel = Math.sqrt(suma / muestras.length);
+    const ahora = performance.now();
+    barra.style.width = Math.min(100, nivel * 600) + "%";
+    // Ruido de fondo = el nivel más bajo oído, con una deriva lenta al alza. Así no se
+    // confunde con la voz aunque la persona empiece a hablar de inmediato.
+    suelo = suelo === null ? nivel : Math.min(suelo * 1.002 + 0.00002, nivel);
+    const umbral = Math.min(0.06, Math.max(0.012, suelo * 4));
+    if (nivel > umbral) {
+      if (!vozDesde) vozDesde = ahora;
+      if (ahora - vozDesde > 120) hayVoz = true;
+      ultimaVoz = ahora;
+    } else {
+      vozDesde = 0;
+    }
+    if (hayVoz && ahora - ultimaVoz > SILENCIO_MS) return terminar(true);
+    if (hayVoz && ahora - inicio > MAX_FRASE_MS) return terminar(true);
+    if (!hayVoz && ahora - inicio > ESPERA_MS) return terminar(false);
+    bucle = requestAnimationFrame(medir);
+  }
+  medir();
+}
+
+boton.onclick = () => {
+  if (activo) {                          // parar
+    activo = false;
+    if (audio) audio.pause();
+    if (grabadora && grabadora.state === "recording") { grabadora.onstop = null; grabadora.stop(); }
+    soltarMicro();
+    boton.textContent = "🎧 Seguir conversando"; boton.className = "";
+    mostrar("Conversación en pausa.", "parado");
+    return;
+  }
+  activo = true;
+  boton.textContent = "⏸ Pausar"; boton.className = "parar";
+  hablar();
+};
+
+window.addEventListener("message", evento => {
+  if (evento.data.type !== "streamlit:render") return;
+  const args = evento.data.args || {};
+  if (args.play_id === ultimoId) return;         // el mismo turno: nada nuevo que decir
+  ultimoId = args.play_id;
+  pendiente = args.play || "";
+  if (activo && fase !== "escuchando") hablar(); // llega la respuesta: decirla y volver a escuchar
+});
+
+enviar("streamlit:componentReady", { apiVersion: 1 });
+enviar("streamlit:setFrameHeight", { height: 76 });
+</script>
+</body>
+</html>

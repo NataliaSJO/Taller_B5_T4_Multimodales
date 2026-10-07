@@ -7,6 +7,7 @@ from pathlib import Path
 import streamlit as st
 
 from src import omni, tts, ui
+from src.audio import to_wav
 from src.conversation import GREETING, extra_question, is_yes, merge, missing, question, relax
 
 AUDIO = (".wav", ".mp3", ".flac", ".ogg")
@@ -48,7 +49,7 @@ with st.sidebar:
              "fija los criterios y elige los fondos.")
     st.write(f"**Modelo:** {omni.LABEL if omni.available() else 'no descargado'}")
     st.write(f"**Datos:** {source}")
-    st.write(f"**Voz de respuesta:** {'Piper local (el modelo no genera voz)' if tts.available() else 'no instalada'}")
+    st.write(f"**Voz de respuesta:** {tts.label()} (el modelo no genera voz)")
     st.caption("La primera respuesta tarda más: hay que cargar el modelo en la GPU.")
     if st.button("Nueva conversación"):
         state.clear()
@@ -58,9 +59,9 @@ st.title("FondoClaro · modelo único")
 if not omni.available():
     st.error("Falta el modelo de esta versión. Ejecuta instalar_parte2_opcional.bat (necesita una tarjeta NVIDIA).")
     st.stop()
-ui.render_messages()
+speak = ui.render_messages()
 
-entry = ui.turn_input([suffix[1:] for suffix in AUDIO + IMAGES])
+entry = ui.turn_input([suffix[1:] for suffix in AUDIO + IMAGES], speak)
 if entry:
     started = time.perf_counter()
     text, clips = entry
@@ -68,8 +69,11 @@ if entry:
         audio, images = [], []
         for index, clip in enumerate(clips):
             suffix = Path(clip.name).suffix.lower() or ".wav"
+            payload = clip.getvalue()
+            if suffix not in IMAGES and suffix not in AUDIO:  # browser recordings arrive as webm
+                payload, suffix = to_wav(payload), ".wav"
             path = Path(folder) / f"entrada{index}{suffix}"
-            path.write_bytes(clip.getvalue())
+            path.write_bytes(payload)
             (images if suffix in IMAGES else audio).append(str(path))
         with st.spinner("Pensando..."):
             handle(text, audio, images, funds, source)

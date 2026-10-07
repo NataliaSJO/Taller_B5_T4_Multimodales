@@ -10,6 +10,7 @@ from src import ai_filter, tts, ui
 from src.audio import AUDIO_TYPES, transcribe_audio
 from src.conversation import GREETING, extra_question, is_yes, merge, missing, parse_turn, question, relax
 
+RULES, MODEL = "Reglas", "Reglas + modelo de lenguaje"
 FILTERS = {"gpu": "Gemma 3 4B en GPU", "local": "Gemma 3 1B en CPU", "claude": "Claude por API", "off": "Solo reglas"}
 
 
@@ -20,6 +21,10 @@ def handle(text: str, funds, source: str):
     if pending_relax and is_yes(text):
         state.profile = relax(state.profile, pending_relax)
     else:
+        history = [(message["role"], message["text"]) for message in state.messages[:-1]]
+        read = ai_filter.understand(history, state.profile, text) if state.get("lector") == MODEL else None
+        if read:  # the rules have the last word where both found something
+            state.profile = merge(state.profile, read[0])
         state.profile = merge(state.profile, parse_turn(text, state.pending))
     state.pending = missing(state.profile)
     extra = None if state.pending or state.get("extra_asked") else extra_question(state.profile)
@@ -44,8 +49,11 @@ with st.sidebar:
     chosen = st.selectbox("Quién elige los fondos", options, index=options.index(ai_filter.backend()),
                           format_func=FILTERS.get, help="Solo aparecen las opciones instaladas en este equipo.")
     os.environ["AI_FILTER"] = chosen
+    st.radio("Quién entiende lo que dices", (RULES, MODEL), key="lector", disabled=chosen not in ("gpu", "claude"),
+             help="Las reglas son instantáneas. El modelo entiende frases más libres, tarda unos segundos "
+                  "y puede equivocarse; las reglas tienen la última palabra donde ambos encuentran un dato.")
     st.write(f"**Datos:** {source}")
-    st.write(f"**Voz de respuesta:** {'Piper local' if tts.available() else 'no instalada'}")
+    st.write(f"**Voz de respuesta:** {tts.label()}")
     if st.button("Nueva conversación"):
         state.clear()
         st.rerun()
@@ -53,9 +61,9 @@ with st.sidebar:
 st.title("FondoClaro")
 if is_demo:
     st.warning("**Modo demostración:** los 10 fondos y sus cifras son sintéticos.")
-ui.render_messages()
+speak = ui.render_messages()
 
-entry = ui.turn_input(AUDIO_TYPES)
+entry = ui.turn_input(AUDIO_TYPES, speak)
 if entry:
     started = time.perf_counter()
     text, clips = entry
@@ -66,10 +74,10 @@ if entry:
         st.error(str(exc))
         st.stop()
     text = " ".join(part for part in (*spoken, text) if part).strip()
-    if not text:
-        st.error("No se detectó voz inteligible. Prueba de nuevo.")
-        st.stop()
     with st.spinner("Pensando..."):
-        handle(text, funds, source)
+        if text:
+            handle(text, funds, source)
+        else:  # said aloud so that a hands-free conversation keeps going
+            ui.say("No te he oído bien. ¿Puedes repetirlo?")
     state.messages[-1]["seconds"] = time.perf_counter() - started
     st.rerun()

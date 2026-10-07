@@ -63,9 +63,9 @@ def parse_heuristic(text: str) -> Preferences:
         raw = year_match.group(1)
         horizon = int(raw) if raw.isdigit() else WORDS[raw]
     risk = None
-    if re.search(r"\b(conservador|prudente|riesgo bajo|bajo riesgo)\b", clean):
+    if re.search(r"\b(conservador|prudente|riesgo bajo|bajo riesgo|poco riesgo|sin riesgo|no quiero sustos|tranquil[oa])\b", clean):
         risk = "bajo"
-    elif re.search(r"\b(agresivo|arriesgado|riesgo alto|alto riesgo)\b", clean):
+    elif re.search(r"\b(agresivo|arriesgado|riesgo alto|alto riesgo|mucho riesgo|bastante riesgo)\b", clean):
         risk = "alto"
     elif re.search(r"\b(moderado|equilibrado|riesgo medio|riesgo moderado)\b", clean):
         risk = "medio"

@@ -1,16 +1,18 @@
 """Streamlit pieces shared by the two pages (specialised models and single multimodal model)."""
 
+import base64
 from dataclasses import replace
 from uuid import uuid4
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from . import tts
 from .catalog import load_catalog
 from .conversation import THEMATIC, advise
 from .models import Preferences
-from .paths import DEMO_CATALOG, PRIVATE_CATALOG
+from .paths import DEMO_CATALOG, PRIVATE_CATALOG, ROOT
 from .recommender import recommend
 from .report import DISCLAIMER, build_pdf, percents, summary_text
 
@@ -49,13 +51,39 @@ def _spoken_greeting(greeting: str) -> bytes | None:
     return tts.synthesize(greeting)
 
 
-VOICE, CHAT = "🎙️ Hablar", "⌨️ Escribir"
+HANDS, VOICE, CHAT = "🎧 Manos libres", "🎙️ Pulsar para hablar", "⌨️ Escribir"
+# Browser side of the hands-free mode: speaks the answer, listens until the user stops talking and sends.
+_hands_free = components.declare_component("manos_libres", path=str(ROOT / "componentes" / "manos_libres"))
 
 
-def turn_input(file_types: list[str]) -> tuple[str, list] | None:
-    """The user's next turn as (text, audio or image files). Voice is the main way in; chat is the alternative."""
+class Clip:
+    """A recording from the hands-free component, shaped like Streamlit's uploaded files."""
+
+    def __init__(self, payload: bytes, name: str):
+        self._payload, self.name = payload, name
+
+    def getvalue(self) -> bytes:
+        return self._payload
+
+
+def turn_input(file_types: list[str], speak: int | None) -> tuple[str, list] | None:
+    """The user's next turn as (text, audio or image files).
+
+    Hands-free voice is the main way in; push-to-talk and chat are the alternatives.
+    `speak` is the index of the assistant message that has not been said aloud yet, if any.
+    """
     state = st.session_state
-    mode = st.radio("Cómo quieres conversar", (VOICE, CHAT), horizontal=True, label_visibility="collapsed")
+    mode = st.radio("Cómo quieres conversar", (HANDS, VOICE, CHAT), horizontal=True,
+                    label_visibility="collapsed", key="modo")
+    if mode == HANDS:
+        reply = state.messages[speak].get("audio") if speak is not None else None
+        heard = _hands_free(play=base64.b64encode(reply).decode() if reply else "",
+                            play_id=len(state.messages), key="manos_libres", default=None)
+        if heard and heard["id"] != state.get("heard"):
+            state.heard = heard["id"]
+            suffix = ".ogg" if "ogg" in heard["mime"] else ".mp4" if "mp4" in heard["mime"] else ".webm"
+            return "", [Clip(base64.b64decode(heard["audio"]), "voz" + suffix)]
+        return None
     if mode == VOICE:
         state.setdefault("mic", uuid4().hex)
         clip = st.audio_input("Pulsa el micrófono, habla y vuelve a pulsarlo para enviar", key=state.mic)
@@ -116,7 +144,8 @@ def propose(funds, source: str, select, decide):
     })
 
 
-def _show_result(result: dict, key: int, audio: bytes | None):
+def _show_result(message: dict, key: int):
+    result, audio = message["result"], message.get("audio")
     proposal, profile = result["proposal"], result["profile"]
     years = profile.horizon_years
     rows = []
@@ -139,15 +168,21 @@ def _show_result(result: dict, key: int, audio: bytes | None):
     st.caption(DISCLAIMER)
 
 
-def render_messages():
+def render_messages() -> int | None:
+    """Draw the conversation. Returns the index of the answer still to be said aloud, if any."""
     state = st.session_state
     speak = state.pop("speak", None)
-    for index, message in enumerate(state.messages):
-        with st.chat_message(message["role"]):
-            st.write(message["text"])
-            if message.get("audio"):
-                st.audio(message["audio"], format="audio/wav", autoplay=index == speak)
-            if message.get("result"):
-                _show_result(message["result"], index, message.get("audio"))
-            if message.get("seconds") is not None:
-                st.caption(f"⏱ {message['seconds']:.1f} s en responder".replace(".", ","))
+    hands_free = state.get("modo", HANDS) == HANDS  # there the component plays the answer itself
+    # One container at a fixed place: what comes after it (the microphone) keeps its position
+    # as the conversation grows, so the hands-free component is not restarted on every turn.
+    with st.container():
+        for index, message in enumerate(state.messages):
+            with st.chat_message(message["role"]):
+                st.write(message["text"])
+                if message.get("audio"):
+                    st.audio(message["audio"], format="audio/wav", autoplay=index == speak and not hands_free)
+                if message.get("result"):
+                    _show_result(message, index)
+                if message.get("seconds") is not None:
+                    st.caption(f"⏱ {message['seconds']:.1f} s en responder".replace(".", ","))
+    return speak

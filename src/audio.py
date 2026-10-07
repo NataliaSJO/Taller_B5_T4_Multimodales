@@ -1,5 +1,6 @@
 """Local Whisper transcription; no audio is uploaded to a server."""
 
+import io
 import tempfile
 from functools import lru_cache
 from pathlib import Path
@@ -15,6 +16,21 @@ def _model():
     from faster_whisper import WhisperModel
     source = str(WHISPER_DIR) if (WHISPER_DIR / "model.bin").is_file() else WHISPER_SIZE
     return WhisperModel(source, device="cpu", compute_type="int8")
+
+
+def to_wav(payload: bytes, rate: int = 16000) -> bytes:
+    """Any audio (webm from the browser, mp3, m4a...) -> mono 16-bit WAV."""
+    import av
+
+    out = io.BytesIO()
+    with av.open(io.BytesIO(payload)) as source, av.open(out, "w", format="wav") as target:
+        stream = target.add_stream("pcm_s16le", rate=rate, layout="mono")
+        resampler = av.AudioResampler(format="s16", layout="mono", rate=rate)
+        for frame in source.decode(audio=0):
+            for resampled in resampler.resample(frame):
+                target.mux(stream.encode(resampled))
+        target.mux(stream.encode(None))
+    return out.getvalue()
 
 
 def transcribe_audio(payload: bytes, suffix: str = ".wav") -> str:

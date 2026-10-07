@@ -31,6 +31,10 @@ class PreferencesTests(unittest.TestCase):
         self.assertIn("tecnología", profile.excluded_sectors)
         self.assertIsNone(profile.sector)
 
+    def test_everyday_risk_words(self):
+        self.assertEqual(parse_heuristic("no quiero sustos").risk, "bajo")
+        self.assertEqual(parse_heuristic("puedo aguantar bastante riesgo").risk, "alto")
+
     def test_plural_region(self):
         self.assertEqual(parse_heuristic("fondos globales a 5 años").region, "global")
 

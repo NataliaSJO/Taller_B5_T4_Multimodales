@@ -14,7 +14,8 @@ st.subheader("Qué hay instalado")
 checks = [
     ("Catálogo real importado", PRIVATE_CATALOG.is_file(), "Copia catalogo_fondos.md al proyecto y ejecuta instalar.bat"),
     ("Whisper (voz a texto)", (WHISPER_DIR / "model.bin").is_file(), "instalar.bat"),
-    ("Piper (texto a voz)", tts.available(), "instalar.bat"),
+    ("Piper (voz local)", PIPER_VOICE.is_file(), "instalar.bat"),
+    ("Voz neuronal en línea", tts.label().startswith("neuronal"), "pip install edge-tts; necesita internet"),
     ("Gemma 3 1B (filtro en CPU)", LLM_PATH.is_file(), "instalar.bat"),
     ("Gemma 3 4B (filtro en GPU)", (GPU_LLM_PATH / "config.json").is_file(), "instalar_parte2_opcional.bat"),
     ("Gemma 3n (modelo único)", omni.available(), "instalar_parte2_opcional.bat"),

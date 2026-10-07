@@ -24,9 +24,9 @@ EXTRA = {
     ),
     "loss_reaction": (
         "qué harías si tu inversión cayera un veinte por ciento en un año: vender, esperar o comprar más",
-        (("vende", r"\b(venderia|vendo|vender|saldria|retiraria|sacaria)\b"),
+        (("vende", r"\b(vender\w*|vendo|saldria|retiraria|sacaria)\b"),
          ("compra", r"\b(compraria|comprar mas|aprovecharia|invertiria mas|aportaria mas)\b"),
-         ("espera", r"\b(esperaria|esperar|aguantaria|aguantar|mantendria|no haria nada|tranquil[oa])\b")),
+         ("espera", r"\b(esperaria|esperar|aguantaria|mantendria|no haria nada)\b")),
     ),
 }
 LOWER_RISK = {"alto": "medio", "medio": "bajo"}

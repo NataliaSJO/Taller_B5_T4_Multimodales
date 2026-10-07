@@ -2,13 +2,26 @@
 
 MVP del Taller B5-T4. El usuario **habla** con la página sobre lo que quiere invertir y la página le **responde con voz**. Si falta algún dato obligatorio, se lo pregunta. Al terminar entrega un **informe PDF** con la cartera de fondos propuesta y un **audio** que resume en qué le recomienda invertir. También se puede escribir en lugar de hablar.
 
-Todo se ejecuta en local con modelos descargados de Hugging Face. No hace falta ninguna clave.
+Los modelos se descargan de Hugging Face y se ejecutan en local; no hace falta ninguna clave. La única parte que sale del equipo es la voz neuronal de las respuestas, que se puede desactivar (ver «Voz»).
 
 > Demostración educativa. No es asesoramiento de inversión, no sustituye un test de idoneidad y no verifica comisiones ni mínimos de suscripción. Las rentabilidades pasadas no garantizan rentabilidades futuras.
 
-## Arranque tras clonar (Windows)
+## Requisitos
 
-Necesitas [Python 3.11](https://www.python.org/downloads/).
+| | Instalación básica (`instalar.bat`) | Con modelos de GPU (`instalar_parte2_opcional.bat`) |
+| --- | --- | --- |
+| Sistema | Windows 10 u 11 de 64 bits | El mismo |
+| Python | 3.11, con el lanzador `py` (viene con el instalador de python.org) | El mismo |
+| Procesador y memoria | Cualquier CPU reciente; 8 GB de RAM | 16 GB de RAM |
+| Tarjeta gráfica | No hace falta | NVIDIA con 12 GB de memoria o más y controlador reciente (se instala PyTorch para CUDA 12.8) |
+| Disco | 4 GB (entorno 2,5 GB y modelos 1,4 GB) | 25 GB más (PyTorch 5 GB y modelos 19 GB) |
+| Internet | Para instalar; después solo para la voz neuronal | Para instalar |
+| Navegador | Chrome o Edge recientes, con permiso de micrófono | El mismo |
+| Datos | `catalogo_fondos.md` (no está en el repositorio); sin él se usan 10 fondos de ejemplo | El mismo |
+
+Con la instalación básica funciona toda la conversación por voz, el informe y el audio; los fondos los elige Gemma 3 1B en CPU entre 10 candidatos. La parte 2 añade el modelo que decide los criterios y elige entre 150 candidatos (Gemma 3 4B) y la página «Modelo único» (Gemma 3n).
+
+## Arranque tras clonar (Windows)
 
 1. Copia `catalogo_fondos.md` (no está en el repositorio) a la carpeta del proyecto. Sin él se usan 10 fondos sintéticos de ejemplo.
 2. Doble clic en **`instalar.bat`**. Crea el entorno, instala las dependencias, descarga los modelos básicos (1,4 GB) e importa el catálogo si lo encuentra. Funciona en cualquier equipo, sin GPU.
@@ -34,11 +47,19 @@ En la página **Pruebas y estado** se ve qué está instalado y qué falta, y se
 
 | Página | Qué es |
 | --- | --- |
-| 🧩 **Especialistas** | Un modelo adaptado a cada paso. En la barra lateral se elige quién selecciona los fondos: Gemma 3 4B en GPU, Gemma 3 1B en CPU, Claude por API o solo reglas (aparecen las opciones instaladas). |
+| 🧩 **Especialistas** | Un modelo adaptado a cada paso. En la barra lateral se elige quién selecciona los fondos (Gemma 3 4B en GPU, Gemma 3 1B en CPU, Claude por API o solo reglas; aparecen las opciones instaladas) y quién entiende lo que dices (reglas, o reglas más el modelo de lenguaje). |
 | 🧠 **Modelo único** | Un solo modelo multimodal (Gemma 3n) recibe audio, texto o imagen y hace todo. Necesita GPU. |
 | ✅ **Pruebas y estado** | Qué modelos y datos hay instalados, y las pruebas automáticas. |
 
-Se conversa con el micrófono: pulsar, hablar y volver a pulsar para enviar. La respuesta suena sola. Con «⌨️ Escribir» se cambia a chat de texto, donde también se pueden adjuntar audios.
+Hay tres formas de conversar, que se eligen encima del micrófono:
+
+- **🎧 Manos libres** (por defecto): se pulsa «Empezar conversación» una vez. La página habla, escucha hasta que te callas, envía sola y vuelve a escuchar cuando termina de responder. No oye mientras habla, así que no se la puede interrumpir.
+- **🎙️ Pulsar para hablar:** pulsar, hablar y volver a pulsar para enviar.
+- **⌨️ Escribir:** chat de texto, donde también se pueden adjuntar audios.
+
+**Voz.** Las respuestas usan una voz neuronal en línea (`es-ES-ElviraNeural`, a través del paquete `edge-tts`), más natural que la local. Envía el texto de cada respuesta al servicio de voz de Microsoft y no es una API oficial. Con `VOICE=local` en `.env`, o sin conexión, se usa Piper y nada sale del equipo.
+
+**Entender lo que dices.** Por defecto lo hacen unas reglas en español, instantáneas. Con «Reglas + modelo de lenguaje», Gemma 3 4B lee además cada frase. En una prueba con ocho frases coloquiales el modelo captó cosas que las reglas no («bolsa americana», importes en letra), pero tardó 8–13 s por turno, se equivocó en algún dato y rellenó rasgos que nadie había dicho; por eso solo se le toman plazo, riesgo, divisa, importe, zona y sector, y las reglas tienen la última palabra.
 
 **Conversación de prueba:** «Quiero invertir 10.000 euros en fondos de tecnología, bien diversificado» → «A cinco años y con riesgo alto» → «Quiero hacer crecer el dinero, nunca he invertido y si cae vendería».
 
@@ -52,7 +73,7 @@ Cada cuadro indica, por este orden, el paso, el modelo instalado y el que creemo
 flowchart LR
     subgraph IN[Entradas]
         direction TB
-        I1[🎙️ Micrófono<br/>entrada principal]
+        I1[🎙️ Micrófono, manos libres<br/>entrada principal]
         I2[📎 Audio adjunto<br/>wav, mp3, m4a, ogg…]
         I3[⌨️ Texto escrito]
         I4[🖼️ Imagen<br/>solo modelo único]
@@ -62,7 +83,7 @@ flowchart LR
     subgraph ESP[Versión Especialistas]
         direction TB
         E1[Voz a texto<br/>Whisper small<br/>mejor: Whisper large-v3-turbo]
-        E2[Extraer preferencias y preguntar<br/>Reglas en español<br/>mejor: Gemma 3 4B o Claude Haiku 4.5]
+        E2[Extraer preferencias y preguntar<br/>Reglas en español · opcional Gemma 3 4B<br/>mejor: Gemma 3 12B o Claude Haiku 4.5]
         E3[Decidir criterios de búsqueda<br/>Gemma 3 4B en GPU<br/>mejor: Gemma 3 12B o Claude Opus 5.5]
         E4[Aplicar criterios a todo el catálogo<br/>Código, sin modelo]
         E5[Elegir y repartir entre 150 candidatos<br/>Gemma 3 4B en GPU · respaldo Gemma 3 1B en CPU<br/>mejor: Gemma 3 12B o Claude Opus 5.5]
@@ -78,9 +99,9 @@ flowchart LR
 
     subgraph OUT[Salidas]
         direction TB
-        O1[🔊 Respuesta y preguntas habladas<br/>Piper es_ES<br/>mejor: Kokoro o ElevenLabs]
+        O1[🔊 Respuesta y preguntas habladas<br/>Voz neuronal en línea · respaldo Piper local<br/>mejor local: Kokoro o XTTS-v2]
         O2[📄 Informe PDF<br/>ReportLab, sin modelo]
-        O3[🔊 Audio resumen descargable<br/>Piper es_ES]
+        O3[🔊 Audio resumen descargable<br/>la misma voz]
     end
 
     I1 --> E1
@@ -137,7 +158,7 @@ Los pasos 3 y 5 con 150 candidatos necesitan el filtro en GPU (o Claude). Con Ge
 - **Las exclusiones por sector no se pueden garantizar** sin la composición completa; la app lo dice y pregunta si sigue sin ellas.
 - **El reparto no es una optimización de cartera completa:** no hay correlaciones entre fondos.
 - **Los modelos locales no consultan internet.** Solo usan lo que se les pasa.
-- **La conversación no es manos libres:** hay que pulsar el micrófono en cada turno.
+- **En manos libres no se puede interrumpir a la página:** solo escucha cuando ha terminado de hablar.
 
 ## Comparación entre versiones
 
@@ -147,7 +168,7 @@ Los pasos 3 y 5 con 150 candidatos necesitan el filtro en GPU (o Claude). Con Ge
 | Entender la petición | Reglas en español | Gemma 3n E2B |
 | Qué preguntar | Preguntas fijas | Gemma 3n E2B las redacta |
 | Criterios, elección y reparto | Gemma 3 4B | Gemma 3n E2B |
-| Hablar | Piper | Piper (Gemma 3n no genera voz) |
+| Hablar | Voz neuronal en línea o Piper | La misma (Gemma 3n no genera voz) |
 | Memoria de GPU | 4 GB | 11 GB |
 
 Las dos comparten catálogo, filtros, validación, PDF y voz, así que la diferencia que se observa es la de los modelos. Cada respuesta muestra los segundos que ha tardado. En la GPU solo hay un modelo cargado a la vez: al cambiar de versión, la primera respuesta tarda más.
@@ -164,9 +185,9 @@ En negrita, el instalado. Las alternativas no se han probado aquí.
 | Paso | Instalado | Alternativa local | Alternativa en la nube |
 | --- | --- | --- | --- |
 | Voz a texto | **Whisper `small`** (CPU) | Whisper `large-v3-turbo`; NVIDIA Parakeet TDT v3 | `gpt-4o-transcribe` |
-| Extraer preferencias | **Reglas en español** (sin modelo) | Gemma 3 4B; Qwen 2.5 7B | Claude Haiku 4.5; Gemini Flash |
+| Extraer preferencias | **Reglas en español** · opcional **Gemma 3 4B** (GPU) | Gemma 3 12B; Qwen 2.5 7B | Claude Haiku 4.5; Gemini Flash |
 | Criterios, elección y reparto | **Gemma 3 4B en 4 bits** (GPU, 4 GB) · respaldo **Gemma 3 1B Q4** (CPU) | Gemma 3 12B; Qwen 2.5 14B | Claude Opus 5.5 (preparado, deshabilitado) |
-| Texto a voz | **Piper `es_ES-davefx-medium`** (CPU) | Kokoro; XTTS-v2 | ElevenLabs Multilingual; `gpt-4o-mini-tts` |
+| Texto a voz | **Voz neuronal `es-ES-ElviraNeural`** (en línea) · respaldo **Piper `es_ES-davefx-medium`** (CPU) | Kokoro; XTTS-v2 | ElevenLabs Multilingual; `gpt-4o-mini-tts` |
 | Modelo único multimodal | **Gemma 3n E2B** (GPU, 11 GB) | Gemma 3n E4B; Phi-4 multimodal; Qwen2.5-Omni | Gemini; GPT-4o audio |
 | Leer folletos y KID (no implementado) | — | Docling; Qwen2.5-VL | Claude con PDF |
 
@@ -188,7 +209,9 @@ estilo.css, .streamlit/    Aspecto y configuración de la página
 src/conversation.py        Diálogo: qué falta, qué preguntar, ajuste de riesgo
 src/preferences.py         Reglas de extracción en español
 src/audio.py               Voz a texto (Whisper)
-src/tts.py                 Texto a voz (Piper)
+src/tts.py                 Texto a voz (voz neuronal en línea y Piper)
+src/extraction.py          Extracción de preferencias con modelo de lenguaje
+componentes/manos_libres/  Micrófono manos libres (HTML y JavaScript)
 src/recommender.py         Filtros, puntuación, clases de un mismo fondo
 src/ai_filter.py           Criterios, selección y reparto con IA (Gemma o Claude)
 src/omni.py                Lo mismo con Gemma 3n como único modelo

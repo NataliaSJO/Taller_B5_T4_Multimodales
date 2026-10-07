@@ -141,7 +141,7 @@ def web_enabled() -> bool:
     return backend() == "claude" and os.getenv("ADVISOR_WEB", "off").strip().lower() == "on"
 
 
-def _ask_claude(prompt: str, schema: dict, web: bool = False) -> dict:
+def _ask_claude(prompt: str, schema: dict | None, web: bool = False) -> dict:
     import anthropic
 
     client = anthropic.Anthropic()
@@ -149,7 +149,7 @@ def _ask_claude(prompt: str, schema: dict, web: bool = False) -> dict:
     if not web:
         response = client.messages.create(
             **request, messages=[{"role": "user", "content": prompt}],
-            output_config={"format": {"type": "json_schema", "schema": schema}},
+            **({"output_config": {"format": {"type": "json_schema", "schema": schema}}} if schema else {}),
         )
     else:
         # Search results carry citations, which cannot be combined with a JSON schema:
@@ -239,6 +239,27 @@ def criteria_from(answer: dict, preferences: Preferences) -> Criteria:
         keywords=tuple(words[:15]),
         explanation=" ".join(str(answer.get("explicacion") or "").split())[:300],
     )
+
+
+def understand(history: list[tuple[str, str]], known: Preferences, said: str) -> tuple[Preferences, str] | None:
+    """Profile data and next question read by the model. None when no capable model is active or it fails."""
+    from . import extraction
+
+    name = backend()
+    if name == "gpu":
+        ask = lambda prompt: parse_json(generate(GPU_LLM_PATH, [{"type": "text", "text": prompt}], 400, four_bit=True))
+    elif name == "claude":
+        ask = lambda prompt: _ask_claude(prompt + "\nResponde solo con el objeto JSON.", None)
+    else:
+        return None
+    try:
+        new, question = extraction.read(ask(extraction.prompt(history, known, said)))
+    except Exception:
+        return None
+    # In tests the model filled in traits nobody stated (experience, objective, asset class...),
+    # and those change the advice. Only the concrete data is taken from it.
+    return Preferences(horizon_years=new.horizon_years, risk=new.risk, currency=new.currency,
+                       amount=new.amount, region=new.region, sector=new.sector), question
 
 
 def decide(preferences: Preferences, conversation: str) -> Criteria | None:

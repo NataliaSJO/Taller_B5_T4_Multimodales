@@ -58,6 +58,7 @@ class AdviserTests(unittest.TestCase):
     def test_risk_is_lowered_when_answers_do_not_support_it(self):
         profile = merge(Preferences(5, "alto", "EUR"), parse_turn("Nunca he invertido y si cae vendería todo"))
         self.assertEqual((profile.experience, profile.loss_reaction), ("baja", "vende"))
+        self.assertEqual(parse_turn("si cae venderidad").loss_reaction, "vende")  # as Whisper hears it
         advised, notes = advise(profile)
         self.assertEqual(advised.risk, "medio")
         self.assertEqual(len(notes), 1)

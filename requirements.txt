@@ -6,7 +6,8 @@ huggingface_hub
 # Voz a texto (Whisper local)
 faster-whisper>=1.1,<2
 av>=14,<19
-# Texto a voz (Piper local)
+# Texto a voz: Piper local y voz neuronal en línea
 piper-tts>=1.3,<2
+edge-tts>=7
 # Filtro con IA en CPU (Gemma 3 1B con llama.cpp); instalar.bat usa la rueda precompilada
 llama-cpp-python>=0.3,<0.4
