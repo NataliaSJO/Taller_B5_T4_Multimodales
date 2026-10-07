@@ -8,7 +8,7 @@ from src.catalog import load_catalog
 from src.conversation import advise, extra_question, is_yes, merge, missing, parse_turn, question, relax
 from src.models import Criteria, Preferences
 from src.recommender import allocate, recommend
-from src.report import build_pdf, percents, summary_text
+from src.report import build_pdf, capital_evolution, percents, summary_text
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -156,6 +156,20 @@ class ProposalTests(unittest.TestCase):
         self.assertIn("10000 euros", summary)
         pdf = build_pdf(proposal, self.profile, ["Quiero invertir 10.000 € a 5 años"], "demo")
         self.assertTrue(pdf.startswith(b"%PDF"))
+
+    def test_capital_evolution_uses_cumulative_returns_and_requested_horizon(self):
+        with patch.dict(os.environ, {"AI_FILTER": "off"}):
+            proposal = ai_filter.select(self.candidates, self.profile, "texto")
+        for years in (1, 3, 5):
+            points = capital_evolution(proposal, 10000, years)
+            self.assertEqual(len(points), years * 12 + 1)
+            self.assertAlmostEqual(points[0][1], 10000)
+            self.assertEqual(points[-1][0], years)
+            expected = 10000 * sum(
+                weight * (1 + item.fund.metrics(years)[0])
+                for item, weight in zip(proposal.items, proposal.weights)
+            )
+            self.assertAlmostEqual(points[-1][1], expected)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,8 @@ from xml.sax.saxutils import escape
 
 from reportlab.graphics.charts.barcharts import VerticalBarChart
 from reportlab.graphics.charts.legends import Legend
-from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.charts.lineplots import LinePlot
+from reportlab.graphics.shapes import Drawing, String
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -95,6 +96,40 @@ def _chart(proposal: Proposal, years: int) -> Drawing:
     return drawing
 
 
+def capital_evolution(proposal: Proposal, amount: float, years: int) -> list[tuple[float, float]]:
+    """Monthly illustration using each fund's cumulative historical return, without rebalancing."""
+    returns = [item.fund.metrics(years)[0] for item in proposal.items]
+    return [
+        (month / 12, amount * sum(
+            weight * (1 + ret) ** (month / (12 * years))
+            for weight, ret in zip(proposal.weights, returns)
+        ))
+        for month in range(years * 12 + 1)
+    ]
+
+
+def _capital_chart(points: list[tuple[float, float]], years: int, currency: str) -> Drawing:
+    drawing = Drawing(16 * cm, 7 * cm)
+    chart = LinePlot()
+    chart.x, chart.y, chart.width, chart.height = 2.5 * cm, 1.2 * cm, 12.5 * cm, 4.8 * cm
+    chart.data = [points]
+    chart.lines[0].strokeColor = TEAL
+    chart.lines[0].strokeWidth = 2
+    chart.xValueAxis.valueMin, chart.xValueAxis.valueMax = 0, years
+    chart.xValueAxis.valueSteps = list(range(years + 1))
+    chart.xValueAxis.labels.fontSize = 8
+    chart.yValueAxis.labels.fontSize = 8
+    chart.yValueAxis.labelTextFormat = lambda value: f"{value:,.0f}".replace(",", ".")
+    values = [value for _, value in points]
+    padding = max((max(values) - min(values)) * 0.1, max(values) * 0.05, 1)
+    chart.yValueAxis.valueMin = max(0, min(values) - padding)
+    chart.yValueAxis.valueMax = max(values) + padding
+    drawing.add(chart)
+    drawing.add(String(2.5 * cm, 6.4 * cm, f"Capital ({currency})", fontSize=9, fillColor=NAVY))
+    drawing.add(String(9 * cm, 0.3 * cm, "Años desde la inversión", fontSize=9, textAnchor="middle"))
+    return drawing
+
+
 def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str], source: str,
               notes: list[str] = (), criteria: str = "") -> bytes:
     styles = getSampleStyleSheet()
@@ -155,6 +190,25 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
     if proposal.comment:
         story.append(Paragraph(_text(proposal.comment), body))
     story.append(_chart(proposal, years))
+
+    story.append(Paragraph("Evolución ilustrativa de tu capital", heading))
+    if preferences.amount is not None and preferences.amount > 0:
+        points = capital_evolution(proposal, preferences.amount, years)
+        story.append(Paragraph(
+            "Simulación, no una previsión ni una serie histórica real. Se anualiza la rentabilidad "
+            "acumulada de cada fondo en el período seleccionado y se supone que se repite de forma "
+            "constante durante tu plazo. Se mantiene la inversión inicial en cada fondo, sin "
+            "rebalanceos ni aportaciones adicionales. No se descuentan impuestos ni costes adicionales; "
+            "no se representan fluctuaciones ni posibles pérdidas futuras.", small))
+        story.append(_capital_chart(points, years, currency))
+        initial, final = points[0][1], points[-1][1]
+        story.append(Paragraph(
+            f"Capital inicial: <b>{initial:,.2f} {_text(currency)}</b>. "
+            f"Capital final en esta simulación a {years} años: <b>{final:,.2f} {_text(currency)}</b>.", body))
+    else:
+        story.append(Paragraph(
+            "No se ha indicado un importe de inversión. Indica cuánto quieres invertir para "
+            "incluir el gráfico de evolución del capital.", body))
 
     story.append(Paragraph("Por qué cada fondo", heading))
     for index, item in enumerate(proposal.items, start=1):
