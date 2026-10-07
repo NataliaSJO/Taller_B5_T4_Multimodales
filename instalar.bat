@@ -28,6 +28,15 @@ if defined CATALOGO (
     if errorlevel 1 goto error
 )
 
+rem Los folletos descargados (DFI, KID, fichas) se procesan si estan junto al proyecto.
+set FOLLETOS=
+if exist "folletos\indice.csv" set FOLLETOS=folletos
+if exist "..\datos\folletos\indice.csv" set FOLLETOS=..\datos\folletos
+if defined FOLLETOS (
+    %PY% scripts\procesar_folletos.py "%FOLLETOS%"
+    if errorlevel 1 goto error
+)
+
 echo.
 echo Listo. Haz doble clic en iniciar.bat para abrir la aplicacion.
 if not defined CATALOGO (

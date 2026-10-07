@@ -6,6 +6,9 @@ headless = true
 # Sin recarga automática: evita volver a cargar los modelos al editar archivos.
 fileWatcherType = "none"
 
+[client]
+toolbarMode = "minimal"
+
 [browser]
 gatherUsageStats = false
 

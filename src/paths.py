@@ -8,6 +8,7 @@ MODELS = ROOT / "models"
 
 PRIVATE_CATALOG = ROOT / "data/private/funds.csv"
 DEMO_CATALOG = ROOT / "data/demo_funds.csv"
+BROCHURES = ROOT / "data/private/folletos.csv"
 
 # Voz -> texto
 WHISPER_SIZE = os.getenv("WHISPER_MODEL", "small")

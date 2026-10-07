@@ -14,7 +14,7 @@ EXTRA = {
     "objective": (
         "qué buscas sobre todo: hacer crecer el dinero, conservarlo u obtener rentas",
         (("preservación", r"\b(conservar|preservar|proteger|no perder|mantener el valor|seguridad)"),
-         ("rentas", r"\b(rentas?|ingresos|dividendos|cobrar)\b"),
+         ("rentas", r"\b(rentas|ingresos|dividendos|cobrar)\b"),  # plural: «renta fija» is not an objective
          ("crecimiento", r"\b(crecer|crecimiento|maximizar|revalorizar|ganar mas|rentabilidad alta)")),
     ),
     "experience": (

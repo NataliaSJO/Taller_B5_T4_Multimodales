@@ -86,8 +86,10 @@ def _prompt(candidates: list[Recommendation], preferences: Preferences, conversa
     for index, item in enumerate(candidates, start=1):
         ret, vol, sharpe = item.fund.metrics(years)
         ratio = "sin dato" if sharpe is None else f"{sharpe:+.2f}"
+        official = "".join((f" | riesgo oficial {item.fund.sri}/7" if item.fund.sri else "",
+                            f" | costes {item.fund.costs:.2f}%" if item.fund.costs is not None else ""))
         lines.append(f"{index}. {item.fund.name} | rentabilidad {years} años {ret:+.1%} | "
-                     f"volatilidad {vol:.1%} | Sharpe {ratio}")
+                     f"volatilidad {vol:.1%} | Sharpe {ratio}{official}")
     wishes = [f"{name}: {value}" for name, value in (("zona geográfica", preferences.region), ("sector", preferences.sector),
                                                      ("clase de activo", preferences.asset_class)) if value]
     spread = {"baja": "quiere concentrar en pocos fondos", "media": "quiere una diversificación normal",
@@ -109,7 +111,8 @@ def _prompt(candidates: list[Recommendation], preferences: Preferences, conversa
         "2. Preferencias de zona geográfica, sector o clase de activo, si las ha dado: guíate por el nombre del fondo.\n"
         "3. Objetivo del cliente: si quiere crecer, más rentabilidad histórica; si quiere conservar u obtener "
         "rentas, menos volatilidad y mejor Sharpe.\n"
-        "4. Diversificación: evita repetir la misma gestora o la misma estrategia y no concentres más del 60 % en un fondo.\n\n"
+        "4. A igualdad de lo demás, prefiere costes más bajos cuando el dato aparece.\n"
+        "5. Diversificación: evita repetir la misma gestora o la misma estrategia y no concentres más del 60 % en un fondo.\n\n"
         "Devuelve JSON con «seleccion» (id del fondo y peso en porcentaje entero; los pesos suman 100) y "
         "«comentario» (una sola frase breve en español que explique la cartera al cliente)."
     )

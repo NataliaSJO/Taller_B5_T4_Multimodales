@@ -6,6 +6,12 @@ Los modelos se descargan de Hugging Face y se ejecutan en local; no hace falta n
 
 > Demostración educativa. No es asesoramiento de inversión, no sustituye un test de idoneidad y no verifica comisiones ni mínimos de suscripción. Las rentabilidades pasadas no garantizan rentabilidades futuras.
 
+![Conversación manos libres: la página saluda y espera a que hables](docs/images/conversacion.png)
+
+![Propuesta con reparto, informe PDF y audio resumen](docs/images/propuesta.png)
+
+Las capturas están hechas con el catálogo sintético de demostración (`CATALOG=demo`): los fondos y sus cifras son ficticios.
+
 ## Requisitos
 
 | | Instalación básica (`instalar.bat`) | Con modelos de GPU (`instalar_parte2_opcional.bat`) |
@@ -17,14 +23,14 @@ Los modelos se descargan de Hugging Face y se ejecutan en local; no hace falta n
 | Disco | 3 GB (entorno y 1,4 GB de modelos) | 24 GB más (PyTorch con CUDA y 19 GB de modelos) |
 | Internet | Para instalar; después solo para la voz neuronal | Para instalar |
 | Navegador | Chrome o Edge recientes, con permiso de micrófono | El mismo |
-| Datos | `catalogo_fondos.md` (no está en el repositorio); sin él se usan 10 fondos de ejemplo | El mismo |
+| Datos | `catalogo_fondos.md` y, opcionalmente, la carpeta `folletos/` (no están en el repositorio); sin catálogo se usan 10 fondos de ejemplo | Los mismos |
 
 Con la instalación básica funciona toda la conversación por voz, el informe y el audio; los fondos los elige Gemma 3 1B en CPU entre 10 candidatos. La parte 2 añade el modelo que decide los criterios y elige entre 150 candidatos (Gemma 3 4B) y la página «Modelo único» (Gemma 3n).
 
 ## Arranque tras clonar (Windows)
 
-1. Copia `catalogo_fondos.md` (no está en el repositorio) a la carpeta del proyecto. Sin él se usan 10 fondos sintéticos de ejemplo.
-2. Doble clic en **`instalar.bat`**. Crea el entorno, instala las dependencias, descarga los modelos básicos (1,4 GB) e importa el catálogo si lo encuentra. Funciona en cualquier equipo, sin GPU.
+1. Copia `catalogo_fondos.md` y, si la tienes, la carpeta `folletos/` (ninguno está en el repositorio) a la carpeta del proyecto. Sin el catálogo se usan 10 fondos sintéticos de ejemplo.
+2. Doble clic en **`instalar.bat`**. Crea el entorno, instala las dependencias, descarga los modelos básicos (1,4 GB), importa el catálogo y procesa los folletos si los encuentra. Funciona en cualquier equipo, sin GPU.
 3. Doble clic en **`iniciar.bat`**. Arranca la aplicación y abre `index.html`, la puerta de entrada con los enlaces.
 4. Opcional, solo con una NVIDIA de 12 GB o más: doble clic en **`instalar_parte2_opcional.bat`**. Instala PyTorch con CUDA y descarga 19 GB de modelos. Añade el filtro con Gemma 3 4B y la versión de modelo único.
 
@@ -78,6 +84,7 @@ flowchart LR
         I3[⌨️ Texto escrito]
         I4[🖼️ Imagen<br/>solo modelo único]
         I5[(Catálogo EODHD<br/>92.257 fondos)]
+        I6[(📑 Folletos: DFI, KID, fichas<br/>PDF y HTML)]
     end
 
     subgraph ESP[Versión Especialistas]
@@ -108,6 +115,8 @@ flowchart LR
     I2 --> E1
     I3 --> E2
     I5 --> E4
+    I6 -- leídos con reglas --> E4
+    I6 -- leídos con reglas --> U2
     I1 --> U1
     I2 --> U1
     I3 --> U1
@@ -134,6 +143,7 @@ flowchart LR
     A --> C[El modelo decide<br/>los criterios]
     C --> R[El código los aplica<br/>a todo el catálogo]
     D[(92.257 fondos)] --> R
+    K[(Folletos: riesgo oficial,<br/>costes, mínimos)] --> R
     R --> L[El modelo elige y reparte<br/>entre 150 candidatos]
     L --> P[Informe PDF]
     L --> V[Audio resumen]
@@ -144,7 +154,7 @@ flowchart LR
 3. **El modelo decide los criterios.** A partir de la conversación transcrita fija cuánto pesan el ajuste al riesgo, el Sharpe y la rentabilidad, la volatilidad objetivo, una rentabilidad mínima y, si el cliente pidió un tema («oro», «tecnología»), las palabras que deben aparecer en el nombre del fondo.
 4. **El código los aplica a todo el catálogo.** Siempre se descartan los fondos de otra divisa, sin datos recientes o por encima de la volatilidad máxima del perfil (bajo 10 %, medio 20 %, alto 35 %): el modelo no puede subir el riesgo. Queda una sola clase de participación por fondo.
 5. **El modelo elige y reparte.** Ve los 150 mejores candidatos con sus cifras y devuelve qué fondos y con qué peso. El número de fondos (2 a 7) depende de cuánto se quiera diversificar.
-6. **Validación.** Solo se aceptan fondos de la lista; los repartos degenerados se sustituyen por uno inversamente proporcional a la volatilidad. Si el modelo falla, deciden las reglas.
+6. **Validación.** Solo se aceptan fondos de la lista; los repartos degenerados se sustituyen por uno proporcional a la puntuación de cada fondo, con un máximo del 40 % por fondo. Si el modelo falla, deciden las reglas.
 7. **Entrega.** PDF con la conversación, el perfil, los criterios, la cartera, un gráfico y el porqué de cada fondo; y un audio con el resumen.
 
 Los pasos 3 y 5 con 150 candidatos necesitan el filtro en GPU (o Claude). Con Gemma 3 1B en CPU no hay paso 3 y el modelo elige entre 10 candidatos.
@@ -153,12 +163,36 @@ Los pasos 3 y 5 con 150 candidatos necesitan el filtro en GPU (o Claude). Con Ge
 
 - **Las cifras nunca salen del modelo.** Rentabilidades, volatilidades y motivos por fondo vienen del catálogo.
 - **El modelo no lee los 92.257 fondos uno a uno.** No caben en su contexto: decide los criterios, el código los aplica a todos y el modelo elige entre los 150 mejores.
-- **Zona y sector casi nunca están verificados.** Solo 3 fondos tienen ficha contrastada, así que las preferencias se comprueban con el nombre del fondo y el informe lo marca como «exposición no verificada».
-- **No hay mínimos de suscripción en el catálogo.** Se consideran todos los fondos; por debajo de 100.000, entre las clases de un mismo fondo se prefiere la que no parece institucional. El mínimo real hay que mirarlo en el folleto.
+- **Zona y sector solo están verificados donde hay folleto.** Para el resto, las preferencias se comprueban con el nombre del fondo y el informe lo marca como «exposición no verificada».
+- **La inversión mínima solo se conoce donde hay ficha** (unos 1.700 fondos); esos se descartan si el mínimo supera el importe. Para el resto, por debajo de 100.000 se prefiere, entre las clases de un mismo fondo, la que no parece institucional; el mínimo real hay que mirarlo en el folleto.
 - **Las exclusiones por sector no se pueden garantizar** sin la composición completa; la app lo dice y pregunta si sigue sin ellas.
 - **El reparto no es una optimización de cartera completa:** no hay correlaciones entre fondos.
 - **Los modelos locales no consultan internet.** Solo usan lo que se les pasa.
 - **En manos libres no se puede interrumpir a la página:** solo escucha cuando ha terminado de hablar.
+
+## Folletos de los fondos
+
+`scripts/procesar_folletos.py` convierte la documentación descargada (carpeta `folletos/` con su `indice.csv`) en una fila por fondo, en `data/private/folletos.csv`:
+
+| Documento | Qué se extrae |
+| --- | --- |
+| DFI de la CNMV y KID (PRIIPs) | Riesgo oficial de 1 a 7, periodo recomendado, costes corrientes, categoría y objetivo |
+| Ficha de Deutsche Bank | Inversión mínima, divisa y gastos corrientes |
+| Folleto resumido de la SEC (497K) | Objetivo y gastos anuales |
+
+Zona, sector y clase de activo se deducen del objetivo con palabras clave. Se hace con reglas, sin modelo: son miles de documentos y tarda alrededor de un minuto. En la primera pasada (17.000 documentos de 19.128 fondos) se obtuvo el riesgo oficial de 2.406 fondos, los costes de 14.419 y la inversión mínima de 1.686.
+
+Cómo se usa en la recomendación:
+
+- **Riesgo oficial:** se descarta el fondo si su clase de riesgo supera la del perfil (bajo hasta 3, medio hasta 4, alto hasta 6), aunque su volatilidad pasada quepa.
+- **Inversión mínima:** se descarta si supera el importe que se quiere invertir.
+- **Costes:** restan puntuación y se muestran al modelo, que los tiene en cuenta al elegir.
+- **Zona, sector y activos:** lo que dice el folleto cuenta como exposición verificada.
+- **Fondos que solo están en los folletos:** no tienen precios en el catálogo, así que no se pueden puntuar. Los que encajan por divisa, riesgo oficial y preferencias se listan aparte en la página y en el PDF.
+
+La descarga sigue creciendo: el script solo lee los fondos nuevos o con documentos nuevos, e `iniciar.bat` lo ejecuta en cada arranque. El histórico de precios en Parquet, cuando esté, permitirá calcular las métricas de los fondos que hoy solo tienen folleto e incluirlos en el reparto; hoy no está integrado.
+
+Los textos no se leen con un modelo de lenguaje ni con OCR: un documento escaneado o con una redacción distinta de la habitual se queda sin datos.
 
 ## Comparación entre versiones
 
@@ -189,7 +223,7 @@ En negrita, el instalado. Las alternativas no se han probado aquí.
 | Criterios, elección y reparto | **Gemma 3 4B en 4 bits** (GPU, 4 GB) · respaldo **Gemma 3 1B Q4** (CPU) | Gemma 3 12B; Qwen 2.5 14B | Claude Opus 5.5 (preparado, deshabilitado) |
 | Texto a voz | **Voz neuronal `es-ES-ElviraNeural`** (en línea) · respaldo **Piper `es_ES-davefx-medium`** (CPU) | Kokoro; XTTS-v2 | ElevenLabs Multilingual; `gpt-4o-mini-tts` |
 | Modelo único multimodal | **Gemma 3n E2B** (GPU, 11 GB) | Gemma 3n E4B; Phi-4 multimodal; Qwen2.5-Omni | Gemini; GPT-4o audio |
-| Leer folletos y KID (no implementado) | — | Docling; Qwen2.5-VL | Claude con PDF |
+| Leer folletos, DFI y KID | **Reglas sobre el texto del PDF** (PyMuPDF, sin modelo) | Docling; Qwen2.5-VL para escaneados | Claude con PDF |
 
 Para cambiar Whisper: `WHISPER_MODEL=medium` en `.env` y volver a ejecutar `scripts/download_models.py`.
 
@@ -220,6 +254,8 @@ src/report.py              Informe PDF y texto del resumen hablado
 src/ui.py                  Piezas de interfaz comunes a las dos versiones
 scripts/download_models.py Descarga de modelos desde Hugging Face
 scripts/import_catalog.py  Conversión del Markdown EODHD a CSV
+scripts/procesar_folletos.py  Lectura de DFI, KID y fichas a una fila por fondo
+src/brochures.py           Uso de esa documentación en la recomendación
 data/demo_funds.csv        Catálogo sintético
 data/private/, models/     Catálogo real y modelos, ignorados por Git
 tests/                     Pruebas (python -m unittest discover -s tests)

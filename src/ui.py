@@ -1,6 +1,7 @@
 """Streamlit pieces shared by the two pages (specialised models and single multimodal model)."""
 
 import base64
+import os
 from dataclasses import replace
 from uuid import uuid4
 
@@ -8,11 +9,11 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from . import tts
+from . import brochures, tts
 from .catalog import load_catalog
 from .conversation import THEMATIC, advise
 from .models import Preferences
-from .paths import DEMO_CATALOG, PRIVATE_CATALOG, ROOT
+from .paths import BROCHURES, DEMO_CATALOG, PRIVATE_CATALOG, ROOT
 from .recommender import recommend
 from .report import DISCLAIMER, build_pdf, percents, summary_text
 
@@ -20,17 +21,27 @@ POOL = 150  # candidates handed to the selection step
 MIN_CANDIDATES = 10  # fewer than this and the model's optional filters are dropped
 
 
-@st.cache_resource(show_spinner="Cargando catálogo...")
-def _catalog_at(path: str, modified_ns: int):
-    return load_catalog(path)
+@st.cache_resource(show_spinner="Cargando catálogo y folletos...")
+def _catalog_at(path: str, modified_ns: int, brochures_ns: int):
+    """Catalog funds, enriched with their documents when these have been processed."""
+    funds = load_catalog(path)
+    documents = brochures.load(BROCHURES) if brochures_ns else {}
+    return (brochures.enrich(funds, documents) if documents else funds), documents
 
 
 def catalog() -> tuple[list, str, bool]:
-    path = PRIVATE_CATALOG if PRIVATE_CATALOG.is_file() else DEMO_CATALOG
-    funds = _catalog_at(str(path), path.stat().st_mtime_ns)
+    # CATALOG=demo fuerza los fondos sintéticos (para demos y capturas sin datos con licencia)
+    forced_demo = os.getenv("CATALOG", "").strip().lower() == "demo"
+    path = PRIVATE_CATALOG if PRIVATE_CATALOG.is_file() and not forced_demo else DEMO_CATALOG
     is_demo = path == DEMO_CATALOG
+    with_documents = BROCHURES.is_file() and not is_demo
+    funds, documents = _catalog_at(str(path), path.stat().st_mtime_ns,
+                                   BROCHURES.stat().st_mtime_ns if with_documents else 0)
     source = ("catálogo sintético de demostración" if is_demo
               else f"catálogo EODHD local ({len(funds):,} identificadores)".replace(",", "."))
+    if documents:
+        source += f" y documentación de {len(documents):,} fondos".replace(",", ".")
+    st.session_state.documents = documents
     return funds, source, is_demo
 
 
@@ -138,9 +149,11 @@ def propose(funds, source: str, select, decide):
         return
     proposal = select(candidates, profile, " ".join(turns))
     how = criteria.describe() if criteria else ""
+    others = brochures.without_history(state.get("documents") or {}, profile)
     say(summary_text(proposal, profile, notes), result={
         "proposal": proposal, "profile": profile, "eligible": diagnostics["eligible"], "criteria": how,
-        "pdf": build_pdf(proposal, profile, turns, source, notes, how),
+        "others": others, "excluded": {key: diagnostics[key] for key in ("sri", "minimum")},
+        "pdf": build_pdf(proposal, profile, turns, source, notes, how, others),
     })
 
 
@@ -154,11 +167,22 @@ def _show_result(message: dict, key: int):
         rows.append({"Fondo": item.fund.name, "ISIN/ID": item.fund.isin, "Peso (%)": share,
                      "Importe": round(profile.amount * share / 100) if profile.amount else None,
                      f"Rent. {years} a. (%)": round(ret * 100, 1), "Volatilidad (%)": round(vol * 100, 1),
-                     "Sharpe": None if sharpe is None else round(sharpe, 2)})
+                     "Sharpe": None if sharpe is None else round(sharpe, 2),
+                     "Riesgo oficial (1-7)": item.fund.sri, "Costes (%)": item.fund.costs})
     st.dataframe(pd.DataFrame(rows), hide_index=True)
     st.caption(f"{result['eligible']} fondos superaron los filtros. Selección y pesos: {proposal.method}.")
     if result.get("criteria"):
         st.caption(f"Criterios decididos por el modelo y aplicados a todo el catálogo: {result['criteria']}.")
+    excluded = result.get("excluded") or {}
+    if excluded.get("sri") or excluded.get("minimum"):
+        st.caption(f"Descartados por su documentación: {excluded['sri']} por riesgo oficial superior al perfil "
+                   f"y {excluded['minimum']} por inversión mínima superior al importe.")
+    if result.get("others"):
+        with st.expander("Otros fondos con folleto que encajan, sin histórico de precios"):
+            st.dataframe(pd.DataFrame([{"Fondo": doc.name, "ISIN": doc.isin, "Riesgo oficial (1-7)": doc.sri,
+                                        "Costes (%)": doc.costs, "Categoría": doc.category or doc.assets}
+                                       for doc in result["others"]]), hide_index=True)
+            st.caption("No están en el catálogo de precios, así que no se pueden puntuar ni incluir en el reparto.")
     left, right = st.columns(2)
     left.download_button("📄 Descargar informe PDF", result["pdf"], file_name="propuesta_fondos.pdf",
                          mime="application/pdf", type="primary", key=f"pdf{key}")

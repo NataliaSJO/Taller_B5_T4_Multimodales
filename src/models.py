@@ -38,6 +38,12 @@ class Fund:
     return_5y: float | None
     vol_5y: float | None
     sharpe_5y: float | None
+    # From the fund's own documents (DFI/KID, ficha, folleto), when they have been processed
+    sri: int | None = None            # indicador resumido de riesgo oficial, 1-7
+    costs: float | None = None        # costes corrientes anuales, en %
+    min_investment: float | None = None
+    min_currency: str = ""
+    brochure: str = ""                # fuente del documento
 
     def metrics(self, years: int) -> tuple[float | None, float | None, float | None]:
         if years not in (1, 3, 5):

@@ -108,12 +108,16 @@ class ProposalTests(unittest.TestCase):
         cls.profile = Preferences(5, "medio", "EUR", amount=10000)
         cls.candidates, _ = recommend(load_catalog(ROOT / "data/demo_funds.csv"), cls.profile, limit=40)
 
-    def test_allocation_favours_lower_volatility(self):
+    def test_allocation_follows_fit_and_is_capped(self):
         weights = allocate(self.candidates, 5)
         self.assertAlmostEqual(sum(weights), 1.0)
-        calmest = min(range(len(weights)), key=lambda i: self.candidates[i].fund.vol_5y)
-        self.assertEqual(weights.index(max(weights)), calmest)
+        self.assertEqual(weights.index(max(weights)), 0)          # candidates come best first
+        self.assertLessEqual(max(weights), 0.40 + 1e-9)
         self.assertEqual(sum(percents(weights)), 100)
+        from dataclasses import replace
+        lopsided = [replace(self.candidates[0], score=0.9), replace(self.candidates[1], score=0.05),
+                    replace(self.candidates[2], score=0.05)]
+        self.assertEqual([round(weight, 2) for weight in allocate(lopsided)], [0.40, 0.30, 0.30])
 
     def test_rules_are_used_when_ai_is_off(self):
         with patch.dict(os.environ, {"AI_FILTER": "off"}):

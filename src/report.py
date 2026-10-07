@@ -96,7 +96,7 @@ def _chart(proposal: Proposal, years: int) -> Drawing:
 
 
 def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str], source: str,
-              notes: list[str] = (), criteria: str = "") -> bytes:
+              notes: list[str] = (), criteria: str = "", others: list = ()) -> bytes:
     styles = getSampleStyleSheet()
     body = ParagraphStyle("body", parent=styles["BodyText"], fontSize=9.5, leading=13)
     small = ParagraphStyle("small", parent=body, fontSize=8, leading=10.5, textColor=colors.HexColor("#555555"))
@@ -160,6 +160,16 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
     for index, item in enumerate(proposal.items, start=1):
         story.append(Paragraph(f"<b>{index}. {_text(item.fund.name)}</b> — {_text(item.rationale)}", body))
 
+    if others:
+        story.append(Paragraph("Otros fondos con folleto que encajan", heading))
+        story.append(Paragraph("Cumplen la divisa, el riesgo oficial y las preferencias según su documentación, pero no "
+                               "tienen histórico de precios en el catálogo: no se han puntuado ni entran en el reparto.", body))
+        for doc in others:
+            facts = ", ".join(fact for fact in (f"riesgo oficial {doc.sri} de 7",
+                                                f"costes {doc.costs:.2f} %".replace(".", ",") if doc.costs is not None else "",
+                                                doc.category) if fact)
+            story.append(Paragraph(f"<b>{_text(doc.name)}</b> ({_text(doc.isin)}) — {_text(facts)}", body))
+
     story.append(Paragraph("Cómo se ha calculado", heading))
     story.append(Paragraph(
         "Primero se descartan los fondos de otra divisa, con datos incompletos o desactualizados y los que superan "
@@ -167,15 +177,16 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
         "Sharpe y rentabilidad anualizada, con más peso de la rentabilidad si el objetivo es crecer y más peso "
         "de la estabilidad si es conservar. "
         "Las preferencias de zona, sector o clase de activo se comprueban con la ficha verificada del fondo o, "
-        "si no existe, con su nombre. Solo se incluye una clase de participación por fondo. El catálogo no "
-        "informa de mínimos de suscripción: se consideran todos los fondos y, por debajo de 100.000, entre las "
-        "clases de un mismo fondo se prefiere la que no parece institucional. El mínimo real debe comprobarse "
-        "en el folleto. "
+        "si no existe, con su nombre. Solo se incluye una clase de participación por fondo. Cuando se ha leído "
+        "la documentación del fondo (DFI, KID o ficha), se descarta si su riesgo oficial supera el del perfil o si "
+        "su inversión mínima supera el importe, y sus costes corrientes restan puntuación. Para el resto no hay "
+        "mínimos: por debajo de 100.000, entre las clases de un mismo fondo se prefiere la que no parece "
+        "institucional, y el mínimo real debe comprobarse en el folleto. "
         + (f"Antes de filtrar, el modelo decidió estos criterios, que se aplicaron a todo el catálogo: {_text(criteria)}. "
            if criteria else "")
         + f"Selección final y pesos: {_text(proposal.method)}. Cuando el modelo no propone un reparto válido, los pesos "
-        "son inversamente proporcionales a la volatilidad de cada fondo. No se dispone de correlaciones entre fondos, "
-        "por lo que el reparto no es una optimización de cartera completa.", body))
+        "son proporcionales a la puntuación de cada fondo, con un máximo del 40 % por fondo. No se dispone de "
+        "correlaciones entre fondos, por lo que el reparto no es una optimización de cartera completa.", body))
     story.append(Spacer(1, 8))
     story.append(Paragraph(DISCLAIMER, small))
 

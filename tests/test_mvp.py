@@ -86,6 +86,32 @@ class RankingTests(unittest.TestCase):
         self.assertEqual([item.fund.isin for item in small], ["DEMO000002"])
         self.assertEqual([item.fund.isin for item in large], ["INST"])
 
+    def test_documents_filter_by_official_risk_and_minimum(self):
+        from dataclasses import replace
+        base = next(fund for fund in self.funds if fund.isin == "DEMO000002")
+        risky = replace(base, isin="SRI6", name="Demo Arriesgado", sri=6, brochure="DFI")
+        costly = replace(base, isin="MIN", name="Demo Minimo Alto", min_investment=50000, min_currency="EUR", brochure="ficha")
+        cheap = replace(base, isin="OK", name="Demo Barato", sri=3, costs=0.2, brochure="DFI")
+        dear = replace(base, isin="CARO", name="Demo Caro", sri=3, costs=2.5, brochure="DFI")
+        results, diag = recommend([risky, costly, cheap, dear], Preferences(5, "medio", "EUR", amount=5000), limit=10)
+        self.assertEqual([item.fund.isin for item in results], ["OK", "CARO"])   # lower costs rank first
+        self.assertEqual((diag["sri"], diag["minimum"]), (1, 1))
+        self.assertIn("riesgo oficial 3 de 7", results[0].rationale)
+        enough, _ = recommend([costly], Preferences(5, "medio", "EUR", amount=60000))
+        self.assertEqual(len(enough), 1)
+
+    def test_brochure_extraction_rules(self):
+        from scripts.procesar_folletos import classify, number, read_ficha, read_kid
+        kid = read_kid("Tipo: Fondo de Inversión. RENTA VARIABLE INTERNACIONAL.\nel plazo de inversión recomendado es de 5 años.\n"
+                       "Hemos clasificado este producto en la clase de riesgo 5 en una escala de 7\n"
+                       "Comisiones de gestión y otros costes administrativos o de funcionamiento 1,85 % del valor\n"
+                       "Objetivos: El fondo invierte al menos un 75% en renta variable de empresas radicadas en China y Asia.")
+        self.assertEqual((kid["sri"], kid["periodo_anios"], kid["costes_pct"]), (5, 5, 1.85))
+        self.assertEqual(number("35.000"), 35000)
+        self.assertEqual(read_ficha("INVERSIÓN MÍNIMA\n35.000 USD\n5.000 USD\nDIVISA\nEUR")["inversion_minima"], 35000)
+        self.assertEqual(classify(kid["objetivo"])["regiones"], "asia")
+        self.assertNotIn("sectores", classify("invierte en instrumentos financieros y activos financieros"))
+
     def test_fixed_income_does_not_return_mixed_fund(self):
         results, _ = recommend(self.funds, Preferences(5, "bajo", "EUR", asset_class="renta fija"))
         self.assertEqual([item.fund.isin for item in results], ["DEMO000001"])

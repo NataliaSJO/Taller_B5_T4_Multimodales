@@ -8,6 +8,9 @@ from .models import Criteria, Fund, Preferences, Recommendation
 from .preferences import normalize
 
 CUTOFF = date(2026, 10, 5)
+# Highest official risk class (SRI, 1-7) accepted for each declared risk. The classes follow
+# volatility bands (3: up to 12 %, 4: up to 20 %, 6: up to 80 %), in line with the limits below.
+MAX_SRI = {"bajo": 3, "medio": 4, "alto": 6}
 # Score weights (ajuste al riesgo, Sharpe, rentabilidad) according to the stated objective.
 WEIGHTS = {
     None: (0.55, 0.25, 0.20),
@@ -140,7 +143,8 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
         fit_weight, sharpe_weight, return_weight = criteria.weights
         if criteria.keywords:
             wanted = re.compile(r"\b(?:" + "|".join(re.escape(word) for word in criteria.keywords) + ")")
-    counts = {"catalog": len(funds), "currency": 0, "metrics": 0, "risk": 0, "profile": 0}
+    counts = {"catalog": len(funds), "currency": 0, "metrics": 0, "risk": 0, "profile": 0,
+              "sri": 0, "minimum": 0}
     scored = []
     for fund in funds:
         # GBX denotes pence sterling; its percentage returns are comparable with GBP.
@@ -159,6 +163,12 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
         counts["metrics"] += 1
         if vol > max_vol:
             continue
+        if fund.sri is not None and fund.sri > MAX_SRI[preferences.risk]:
+            counts["sri"] += 1          # the official risk class says no, whatever the past volatility
+            continue
+        if not _affordable(fund, preferences):
+            counts["minimum"] += 1
+            continue
         counts["risk"] += 1
         by_name = _thematic(fund, preferences)
         if by_name is None:
@@ -174,9 +184,18 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
         return_component = max(0.0, min(1.0, (annual_return + 0.10) / 0.30))
         sharpe_component = 0.25 if sharpe is None else max(0.0, min(1.0, (sharpe + 1) / 3))
         score = fit_weight * risk_fit + sharpe_weight * sharpe_component + return_weight * return_component
+        if fund.costs is not None:
+            score -= min(fund.costs, 3.0) * 0.02   # each point of yearly costs weighs on the choice
         ratio = "sin Sharpe verificable" if sharpe is None else f"Sharpe {sharpe:+.2f}"
         rationale = (f"Volatilidad histórica {vol:.1%} dentro del límite {max_vol:.0%} del perfil; "
                      f"rentabilidad acumulada {ret:+.1%} a {preferences.horizon_years} años; {ratio}.")
+        if fund.brochure:
+            facts = [f"riesgo oficial {fund.sri} de 7" if fund.sri else "",
+                     f"costes corrientes {fund.costs:.2f} %".replace(".", ",") if fund.costs is not None else "",
+                     f"inversión mínima {fund.min_investment:,.0f} {fund.min_currency}".replace(",", ".")
+                     if fund.min_investment else ""]
+            if any(facts):
+                rationale += f" Según su documentación ({fund.brochure}): {'; '.join(fact for fact in facts if fact)}."
         if by_name:
             rationale += f" Encaja con {', '.join(by_name)} por el nombre del fondo; exposición no verificada."
         scored.append(Recommendation(fund=fund, score=score, rationale=rationale))
@@ -184,6 +203,7 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
     counts["eligible"] = len(scored)
     # One share class per fund: the best scored, or a retail one when the amount is small.
     retail = preferences.amount is not None and preferences.amount < RETAIL_BELOW
+    looks_institutional = lambda fund: fund.min_investment is None and _institutional(fund)  # a known minimum decides
     families: dict[str, Recommendation] = {}
     for item in scored:
         family = _family_name(item.fund.name)
@@ -194,22 +214,46 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
                     break
                 continue
             families[family] = item
-        elif retail and _institutional(current.fund) and not _institutional(item.fund):
+        elif retail and looks_institutional(current.fund) and not looks_institutional(item.fund):
             families[family] = item
     selected = [
         replace(item, rationale=item.rationale + " Parece una clase institucional: comprueba el mínimo de suscripción.")
-        if retail and _institutional(item.fund) else item
+        if retail and looks_institutional(item.fund) else item
         for item in families.values()
     ]
     return selected, counts
+
+
+def _affordable(fund: Fund, preferences: Preferences) -> bool:
+    """False when the documented minimum investment clearly exceeds what the client wants to invest."""
+    if not preferences.amount or not fund.min_investment:
+        return True
+    same = fund.min_currency == preferences.currency
+    return fund.min_investment <= preferences.amount * (1.0 if same else 1.5)  # margin for another currency
 
 
 def _institutional(fund: Fund) -> bool:
     return bool(INSTITUTIONAL.search(normalize(fund.name)))
 
 
-def allocate(items, years: int) -> list[float]:
-    """Inverse-volatility weights. A simple risk split: correlations are not available."""
-    inverse = [1.0 / max(item.fund.metrics(years)[1] or 0.0, 0.01) for item in items]
-    total = sum(inverse)
-    return [value / total for value in inverse]
+def allocate(items, years: int | None = None) -> list[float]:
+    """Fallback split when no model proposes one: more weight to the funds that fit the profile
+    best (their score), with no fund above 40 % when there are three or more.
+
+    Not a portfolio optimisation: correlations between funds are not available.
+    """
+    scores = [max(item.score, 0.01) for item in items]
+    weights = [score / sum(scores) for score in scores]
+    cap = 0.40 if len(items) >= 3 else 1.0
+    for _ in range(len(items)):
+        over = [index for index, weight in enumerate(weights) if weight > cap + 1e-9]
+        if not over:
+            break
+        excess = sum(weights[index] - cap for index in over)
+        free = [index for index, weight in enumerate(weights) if weight < cap - 1e-9]
+        room = sum(weights[index] for index in free)
+        for index in over:
+            weights[index] = cap
+        for index in free:
+            weights[index] += excess * weights[index] / room
+    return weights

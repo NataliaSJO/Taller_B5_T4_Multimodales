@@ -3,6 +3,8 @@ pandas>=2.0,<3
 python-dotenv>=1,<2
 reportlab>=4,<6
 huggingface_hub
+# Lectura de los folletos en PDF (scripts/procesar_folletos.py)
+pymupdf>=1.24
 # Voz a texto (Whisper local)
 faster-whisper>=1.1,<2
 av>=14,<19
