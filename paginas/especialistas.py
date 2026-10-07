@@ -58,7 +58,8 @@ with st.sidebar:
     ui.profile_panel(funds, source, ai_filter.select, ai_filter.decide)
 
 # While the user is still talking, load what the first answer will need.
-ui.warm_up(audio.warm, *((ai_filter.warm,) if chosen == "gpu" else ()))
+if not is_demo:
+    ui.warm_up(audio.warm, *((ai_filter.warm,) if chosen == "gpu" else ()))
 
 st.title("FondoClaro")
 if is_demo:

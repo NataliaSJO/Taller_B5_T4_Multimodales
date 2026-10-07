@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from . import brochures, history, tts
+from . import brochures, history, semantic, tts
 from .catalog import load_catalog
 from .conversation import THEMATIC, advise, apply_turn, describe, missing, question, valid_horizon
 from .models import MAX_HORIZON, Preferences
@@ -45,6 +45,7 @@ def catalog() -> tuple[list, str, bool]:
     if documents:
         source += f" y documentación de {len(documents):,} fondos".replace(",", ".")
     st.session_state.documents = documents
+    st.session_state.real_data = not is_demo   # price history and brochures only describe the real catalog
     return funds, source, is_demo
 
 
@@ -200,7 +201,15 @@ def propose(funds, source: str, select, decide):
     progress = st.status("Decidiendo los criterios de búsqueda…")
     criteria = decide(profile, " ".join(turns))
     progress.update(label=f"Buscando entre {len(funds):,} fondos…".replace(",", "."))
-    candidates, diagnostics = recommend(funds, profile, limit=POOL, criteria=criteria)
+    # Semantic search in the brochures, when they have been processed: by theme if there is one,
+    # otherwise by what the client said (only as a small push, without a model to name the theme).
+    theme = ", ".join(part for part in (*(criteria.keywords if criteria else ()), profile.region,
+                                        profile.sector, profile.asset_class) if part)
+    try:
+        affinity = semantic.search(theme or ("" if criteria else " ".join(turns))) if state.get("documents") else {}
+    except Exception:
+        affinity = {}
+    candidates, diagnostics = recommend(funds, profile, limit=POOL, criteria=criteria, semantic=affinity)
     if criteria and len(candidates) < MIN_CANDIDATES and (criteria.keywords or criteria.min_annual_return):
         # The model's optional filters left too few funds: keep its weights and target only.
         dropped = [f"que el nombre del fondo contuviera «{', '.join(criteria.keywords)}»" if criteria.keywords else "",
@@ -210,7 +219,7 @@ def propose(funds, source: str, select, decide):
                      f"{len(candidates)} {'fondo lo cumplía' if len(candidates) == 1 else 'fondos lo cumplían'}; "
                      "he retirado ese filtro para poder comparar más fondos.")
         criteria = replace(criteria, keywords=(), min_annual_return=None)
-        candidates, diagnostics = recommend(funds, profile, limit=POOL, criteria=criteria)
+        candidates, diagnostics = recommend(funds, profile, limit=POOL, criteria=criteria, semantic=affinity)
     relaxed = state.pop("relaxed", None)
     if relaxed:
         names = {"region": "la zona", "sector": "el sector", "asset_class": "la clase de activo",
@@ -238,11 +247,13 @@ def propose(funds, source: str, select, decide):
     progress.update(label=f"Eligiendo entre los {len(candidates)} mejores candidatos…")
     proposal = select(candidates, profile, " ".join(turns))
     progress.update(label="Comprobando la cartera con el histórico diario…")
-    proposal = history.refine(proposal, candidates, profile.horizon_years)
-    try:
-        analysis = history.analyse(proposal.items, proposal.weights, profile.horizon_years)
-    except Exception:  # the report falls back to the illustrative simulation
-        analysis = None
+    analysis = None
+    if state.get("real_data"):
+        proposal = history.refine(proposal, candidates, profile.horizon_years)
+        try:
+            analysis = history.analyse(proposal.items, proposal.weights, profile.horizon_years)
+        except Exception:  # the report falls back to the illustrative simulation
+            analysis = None
     try:
         investment_allocation(proposal.weights, profile.amount)
     except ValueError as exc:
@@ -261,6 +272,7 @@ def propose(funds, source: str, select, decide):
         "proposal": proposal, "profile": profile, "eligible": diagnostics["eligible"], "criteria": how,
         "others": others, "excluded": {key: diagnostics.get(key, 0) for key in ("sri", "minimum")},
         "analysis": analysis, "pdf": pdf, "notes": notes,
+        "semantic": (len(affinity), theme) if affinity else None,
     })
     progress.update(label="Propuesta lista", state="complete")
 
@@ -290,9 +302,14 @@ def _show_result(message: dict, key: int):
     if analysis:
         together = (f"; correlación media entre los fondos {analysis.mean_correlation:.2f}".replace(".", ",")
                     if analysis.mean_correlation is not None else "")
-        st.caption(f"Con el histórico diario de {analysis.weeks} semanas, la cartera en conjunto tuvo una volatilidad "
-                   f"anual del {analysis.volatility * 100:.1f} % y una caída máxima del ".replace(".", ",")
-                   f"{abs(analysis.max_drawdown) * 100:.1f} %{together}.")
+        figures = (f"una volatilidad anual del {analysis.volatility * 100:.1f} % y una caída máxima del "
+                   f"{abs(analysis.max_drawdown) * 100:.1f} %").replace(".", ",")
+        st.caption(f"Con el histórico diario de {analysis.weeks} semanas, la cartera en conjunto tuvo "
+                   f"{figures}{together}.")
+    if result.get("semantic"):
+        found, theme = result["semantic"]
+        st.caption(f"Búsqueda semántica en los folletos: {found} fondos con un objetivo afín"
+                   + (f" a «{theme}»." if theme else " a lo que has contado."))
     excluded = result.get("excluded") or {}
     if excluded.get("sri") or excluded.get("minimum"):
         st.caption(f"Descartados por su documentación: {excluded['sri']} por riesgo oficial superior al perfil "

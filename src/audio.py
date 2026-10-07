@@ -1,7 +1,9 @@
 """Local Whisper transcription; no audio is uploaded to a server."""
 
 import io
+import re
 import tempfile
+import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
@@ -9,6 +11,29 @@ from .paths import WHISPER_DIR, WHISPER_SIZE
 
 # Formats the page accepts; recordings from the browser arrive as WAV.
 AUDIO_TYPES = ["wav", "mp3", "m4a", "ogg", "opus", "flac", "aac", "webm", "mp4"]
+
+
+# Given silence or noise, Whisper writes credits it saw in subtitled videos. They are never
+# something a client says to an adviser, so a transcript that is only this counts as no speech.
+PHANTOMS = re.compile(
+    r"subtitulos? (?:por|realizados por|de) (?:la )?comunidad de amara\.?org|amara\.?org|"
+    r"subtitulos? (?:por|realizados por|creados por)\b.*|gracias por ver(?: el video)?|"
+    r"suscribete(?: al canal)?|no olvides suscribirte.*|musica|aplausos|\[.*?\]|\(.*?\)")
+
+
+def spoken(segments) -> str:
+    """Join what was really said: drop segments Whisper itself doubts and its stock phantom lines."""
+    kept = []
+    for segment in segments:
+        text = segment.text.strip()
+        plain = "".join(char for char in unicodedata.normalize("NFKD", text.lower()) if not unicodedata.combining(char))
+        plain = PHANTOMS.sub(" ", plain)
+        if not re.search(r"[a-z0-9]", plain):
+            continue                      # nothing left but a phantom line
+        if segment.no_speech_prob > 0.6 and segment.avg_logprob < -1.0:
+            continue                      # the model thinks this stretch is not speech
+        kept.append(text)
+    return " ".join(kept).strip()
 
 
 @lru_cache(maxsize=1)
@@ -52,8 +77,9 @@ def transcribe_audio(payload: bytes, suffix: str = ".wav") -> str:
         filename = handle.name
     try:
         for vad in (True, False):  # the voice filter can drop one-word answers such as «cinco»
-            segments, _ = model.transcribe(filename, language="es", vad_filter=vad)
-            text = " ".join(segment.text.strip() for segment in segments).strip()
+            segments, _ = model.transcribe(filename, language="es", vad_filter=vad,
+                                           condition_on_previous_text=False)
+            text = spoken(segments)
             if text:
                 return text
         return ""

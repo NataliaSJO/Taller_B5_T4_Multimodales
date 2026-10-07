@@ -148,6 +148,12 @@ class ProposalTests(unittest.TestCase):
         chosen, _, _ = ai_filter._validated(answer, self.candidates, self.profile, 2)
         self.assertEqual([item.fund.isin for item in chosen], [self.candidates[1].fund.isin, self.candidates[0].fund.isin])
 
+    def test_parallel_lists_from_the_model_are_understood(self):
+        answer = ai_filter.normalise({"seleccion": {"id": [2, 1], "peso": [55, 45]}, "comentario": "ok"})
+        chosen, shares, _ = ai_filter._validated(answer, self.candidates, self.profile, 2)
+        self.assertEqual([item.fund.isin for item in chosen], [self.candidates[1].fund.isin, self.candidates[0].fund.isin])
+        self.assertEqual(shares, [0.55, 0.45])
+
     def test_concentrated_weights_are_replaced(self):
         answer = {"comentario": "", "seleccion": [{"id": 1, "peso": 95}, {"id": 2, "peso": 5}]}
         chosen, shares, _ = ai_filter._validated(answer, self.candidates, self.profile, 5)

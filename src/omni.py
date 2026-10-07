@@ -79,7 +79,7 @@ def select(candidates: list[Recommendation], preferences: Preferences, conversat
     try:
         prompt = ai_filter._prompt(pool, preferences, conversation, count)
         answer = parse_json(generate(OMNI_PATH, [{"type": "text", "text": prompt}], 300))
-        chosen, shares, comment = ai_filter._validated(answer, pool, preferences, count)
+        chosen, shares, comment = ai_filter._validated(ai_filter.normalise(answer), pool, preferences, count)
     except Exception as exc:  # any model failure must not block the proposal
         return Proposal(fallback, tuple(allocate(fallback, years)),
                         f"Reglas deterministas ({LABEL} no disponible: {type(exc).__name__})")

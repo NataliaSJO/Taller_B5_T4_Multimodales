@@ -124,8 +124,10 @@ def _prompt(candidates: list[Recommendation], preferences: Preferences, conversa
         "4. A igualdad de lo demás, prefiere costes más bajos cuando el dato aparece.\n"
         f"5. Diversificación: evita repetir la misma gestora o la misma estrategia. "
         f"Asigna entre el {lower_weight:.0%} y el {upper_weight:.0%} a cada fondo.\n\n"
-        "Devuelve JSON con «seleccion» (en «id», el número que el fondo tiene en la lista, no su nombre; "
-        "en «peso», el porcentaje entero; los pesos suman 100) y "
+        "Devuelve solo JSON con esta forma exacta: "
+        '{"seleccion": [{"id": 12, "peso": 40}, {"id": 3, "peso": 35}, {"id": 27, "peso": 25}], "comentario": "..."}. '
+        "En «seleccion» va una lista con un objeto por fondo (en «id», el número que el fondo tiene en la lista, "
+        "no su nombre; en «peso», el porcentaje entero; los pesos suman 100) y "
         "«comentario» (una sola frase en español, de menos de 25 palabras, que explique la cartera al cliente)."
     )
 
@@ -292,6 +294,16 @@ def decide(preferences: Preferences, conversation: str) -> Criteria | None:
         return None
 
 
+def normalise(answer):
+    """Bring the shapes a model without a schema sometimes uses back to the expected one:
+    {"seleccion": {"id": [..], "peso": [..]}} becomes a list of {"id", "peso"} objects."""
+    if isinstance(answer, dict) and isinstance(answer.get("seleccion"), dict):
+        ids, weights = answer["seleccion"].get("id"), answer["seleccion"].get("peso")
+        if isinstance(ids, list) and isinstance(weights, list) and len(ids) == len(weights):
+            return {**answer, "seleccion": [{"id": index, "peso": weight} for index, weight in zip(ids, weights)]}
+    return answer
+
+
 def _candidate_index(value, candidates: list[Recommendation]) -> int | None:
     """Position (from 1) of the candidate the model means. Without a schema to constrain it, the
     model sometimes answers with the fund's exact name instead of its number."""
@@ -347,7 +359,7 @@ def select(candidates: list[Recommendation], preferences: Preferences, conversat
         prompt = _prompt(pool, preferences, conversation, count)
         answer = (_ask_claude(prompt, _schema(count), web_enabled()) if name == "claude"
                   else ASK[name](prompt, _schema(count)))
-        chosen, shares, comment = _validated(answer, pool, preferences, count)
+        chosen, shares, comment = _validated(normalise(answer), pool, preferences, count)
     except Exception as exc:  # any model failure must not block the proposal
         return Proposal(fallback, tuple(allocate(fallback, years)),
                         f"Reglas deterministas ({label(name)} no disponible: {type(exc).__name__})")

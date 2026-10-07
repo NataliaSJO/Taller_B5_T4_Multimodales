@@ -112,6 +112,29 @@ class RankingTests(unittest.TestCase):
         self.assertEqual(classify(kid["objetivo"])["regiones"], "asia")
         self.assertNotIn("sectores", classify("invierte en instrumentos financieros y activos financieros"))
 
+    def test_semantic_matches_pass_the_keyword_filter_and_rank_higher(self):
+        from src.models import Criteria
+        alto = Preferences(5, "alto", "EUR")
+        gold = Criteria((0.4, 0.3, 0.3), 0.30, keywords=("oro",))
+        self.assertEqual(recommend(self.funds, alto, limit=40, criteria=gold)[0], [])      # no fund is called «oro»
+        found, _ = recommend(self.funds, alto, limit=40, criteria=gold, semantic={"DEMO000004": 0.6})
+        self.assertEqual([item.fund.isin for item in found], ["DEMO000004"])
+        self.assertIn("búsqueda semántica", found[0].rationale)
+        plain = {item.fund.isin: item.score for item in recommend(self.funds, alto, limit=40)[0]}
+        pushed = {item.fund.isin: item.score for item in recommend(self.funds, alto, limit=40, semantic={"DEMO000004": 0.6})[0]}
+        self.assertAlmostEqual(pushed["DEMO000004"] - plain["DEMO000004"], 0.03)
+
+    def test_whisper_phantom_lines_are_not_speech(self):
+        from types import SimpleNamespace
+        from src.audio import spoken
+        segment = lambda text, silence=0.1, logprob=-0.3: SimpleNamespace(text=text, no_speech_prob=silence, avg_logprob=logprob)
+        self.assertEqual(spoken([segment(" Subtítulos por la comunidad de Amara.org")]), "")
+        self.assertEqual(spoken([segment("¡Gracias por ver el vídeo!"), segment("[Música]")]), "")
+        self.assertEqual(spoken([segment("mmm", silence=0.9, logprob=-1.4)]), "")
+        self.assertEqual(spoken([segment(" Cinco años."), segment(" Subtítulos realizados por la comunidad de Amara.org")]),
+                         "Cinco años.")
+        self.assertEqual(spoken([segment("Gracias, con riesgo medio")]), "Gracias, con riesgo medio")
+
     def test_fixed_income_does_not_return_mixed_fund(self):
         results, _ = recommend(self.funds, Preferences(5, "bajo", "EUR", asset_class="renta fija"))
         self.assertEqual([item.fund.isin for item in results], ["DEMO000001"])

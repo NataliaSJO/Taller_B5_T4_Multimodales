@@ -200,3 +200,8 @@ if __name__ == "__main__":
     for name, value in process(args.folder, args.output).items():
         print(f"{name}: {value}")
     print("Escrito", args.output)
+    from src import semantic
+    if semantic.installed():
+        print("Índice para la búsqueda semántica (la primera vez tarda unos minutos)...")
+        for name, value in semantic.build(args.output).items():
+            print(f"{name}: {value}")

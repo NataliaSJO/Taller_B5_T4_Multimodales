@@ -141,9 +141,13 @@ def _thematic(fund: Fund, preferences: Preferences) -> list[str] | None:
 
 
 def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
-              criteria: Criteria | None = None) -> tuple[list[Recommendation], dict]:
+              criteria: Criteria | None = None, semantic: dict[str, float] | None = None) -> tuple[list[Recommendation], dict]:
     """Filter and score the whole catalog. `criteria` (decided by a model) tunes the search, but the
-    hard constraints stay: currency, recent data and the volatility ceiling of the declared risk."""
+    hard constraints stay: currency, recent data and the volatility ceiling of the declared risk.
+
+    `semantic` maps ISIN to how close the fund's documented objective is to what the client asked
+    for: those funds satisfy the model's keyword filter without the word in their name, and
+    the similarity adds a little to their score."""
     if type(preferences.horizon_years) is not int or not 1 <= preferences.horizon_years <= MAX_HORIZON:
         raise ValueError(f"Elige un horizonte entre 1 y {MAX_HORIZON} años")
     window = metric_years(preferences.horizon_years)   # funds are compared over this catalog window
@@ -195,7 +199,9 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
         annual_return = (1 + ret) ** (1 / window) - 1
         if criteria and criteria.min_annual_return is not None and annual_return < criteria.min_annual_return:
             continue
-        if wanted and not wanted.search(normalize(f"{fund.name} {fund.strategy} {fund.assets} {fund.regions} {fund.sectors}")):
+        affinity = semantic.get(fund.isin) if semantic else None
+        if (wanted and affinity is None
+                and not wanted.search(normalize(f"{fund.name} {fund.strategy} {fund.assets} {fund.regions} {fund.sectors}"))):
             continue
         counts["profile"] += 1
 
@@ -205,6 +211,8 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
         score = fit_weight * risk_fit + sharpe_weight * sharpe_component + return_weight * return_component
         if fund.costs is not None:
             score -= min(fund.costs, 3.0) * 0.02   # each point of yearly costs weighs on the choice
+        if affinity is not None:
+            score += 0.05 * affinity
         ratio = "sin Sharpe verificable" if sharpe is None else f"Sharpe {sharpe:+.2f}"
         rationale = (f"Volatilidad histórica {vol:.1%} dentro del límite {max_vol:.0%} del perfil; "
                      f"rentabilidad acumulada {ret:+.1%} a {window} {'año' if window == 1 else 'años'}; {ratio}.")
@@ -215,6 +223,8 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
                      if fund.min_investment else ""]
             if any(facts):
                 rationale += f" Según su documentación ({fund.brochure}): {'; '.join(fact for fact in facts if fact)}."
+        if affinity is not None:
+            rationale += " El objetivo descrito en su folleto es afín a lo que pides (búsqueda semántica)."
         if by_name:
             rationale += f" Encaja con {', '.join(by_name)} por el nombre del fondo; exposición no verificada."
         scored.append(Recommendation(fund=fund, score=score, rationale=rationale))

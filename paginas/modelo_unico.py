@@ -59,7 +59,8 @@ st.title("FondoClaro · modelo único")
 if not omni.available():
     st.error("Falta el modelo de esta versión. Ejecuta instalar_parte2_opcional.bat (necesita una tarjeta NVIDIA).")
     st.stop()
-ui.warm_up(omni.warm)
+if not is_demo:
+    ui.warm_up(omni.warm)
 speak = ui.render_messages()
 
 entry = ui.turn_input([suffix[1:] for suffix in AUDIO + IMAGES], speak)
