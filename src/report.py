@@ -141,7 +141,7 @@ def _capital_chart(points: list[tuple[float, float]], years: int, currency: str)
 
 
 def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str], source: str,
-              notes: list[str] = (), criteria: str = "", others: list = ()) -> bytes:
+              notes: list[str] = (), criteria: str = "", others: list = (), analysis=None) -> bytes:
     styles = getSampleStyleSheet()
     body = ParagraphStyle("body", parent=styles["BodyText"], fontSize=9.5, leading=13)
     small = ParagraphStyle("small", parent=body, fontSize=8, leading=10.5, textColor=colors.HexColor("#555555"))
@@ -209,8 +209,24 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
         story.append(Paragraph(_text(proposal.comment), body))
     story.append(_chart(proposal, years))
 
+    if analysis:
+        base = float(preferences.amount) if preferences.amount else 100.0
+        points = [(elapsed, value * base) for elapsed, value in analysis.points]
+        story.append(Paragraph("Cómo se habría comportado esta cartera", heading))
+        together = (f" La correlación media entre los fondos fue de {analysis.mean_correlation:.2f}".replace(".", ",") + "."
+                    if analysis.mean_correlation is not None else "")
+        story.append(Paragraph(
+            f"Serie histórica real, con los precios diarios de cada fondo durante {analysis.weeks} semanas: se compra "
+            "la cartera al inicio con estos pesos y se mantiene, sin rebalanceos ni aportaciones. En conjunto tuvo una "
+            f"volatilidad anual del <b>{_pct(analysis.volatility)}</b>, una caída máxima del "
+            f"<b>{_pct(abs(analysis.max_drawdown))}</b> y una rentabilidad acumulada del "
+            f"<b>{_pct(analysis.total_return, signed=True)}</b>.{together} No se descuentan impuestos ni costes "
+            "adicionales y no es una previsión.", small))
+        story.append(_capital_chart(points, max(1, round(points[-1][0])), currency if preferences.amount else "base 100"))
     story.append(Paragraph("Evolución ilustrativa de tu capital", heading))
-    if preferences.amount is not None and preferences.amount > 0:
+    if analysis:
+        story.append(Paragraph("Sustituida por la serie histórica real del apartado anterior.", small))
+    elif preferences.amount is not None and preferences.amount > 0:
         points = capital_evolution(proposal, preferences.amount, years)
         story.append(Paragraph(
             "Simulación, no una previsión ni una serie histórica real. Se anualiza la rentabilidad "

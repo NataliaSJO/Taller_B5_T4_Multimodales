@@ -5,7 +5,7 @@ import sys
 
 import streamlit as st
 
-from src import ai_filter, hf_model, omni, tts
+from src import ai_filter, hf_model, history, omni, tts
 from src.paths import BROCHURES, GPU_LLM_PATH, LLM_PATH, OMNI_PATH, PIPER_VOICE, PRIVATE_CATALOG, ROOT, WHISPER_DIR
 
 st.title("Pruebas y estado")
@@ -14,6 +14,7 @@ st.subheader("Qué hay instalado")
 checks = [
     ("Catálogo real importado", PRIVATE_CATALOG.is_file(), "Copia catalogo_fondos.md al proyecto y ejecuta instalar.bat"),
     ("Documentación de fondos procesada", BROCHURES.is_file(), "python scripts/procesar_folletos.py <carpeta folletos>"),
+    ("Histórico diario de precios (Parquet)", history.available(), "fondos_diarios.parquet junto al proyecto o en ..\\datos"),
     ("Whisper (voz a texto)", (WHISPER_DIR / "model.bin").is_file(), "instalar.bat"),
     ("Piper (voz local)", PIPER_VOICE.is_file(), "instalar.bat"),
     ("Voz neuronal en línea", tts.label().startswith("neuronal"), "pip install edge-tts; necesita internet"),

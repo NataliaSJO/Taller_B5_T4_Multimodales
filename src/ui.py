@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from . import brochures, tts
+from . import brochures, history, tts
 from .catalog import load_catalog
 from .conversation import THEMATIC, advise, apply_turn, missing
 from .models import Preferences
@@ -164,6 +164,11 @@ def propose(funds, source: str, select, decide):
                 f"y riesgo {profile.risk}. Dime otra divisa, otro plazo u otro nivel de riesgo y lo vuelvo a intentar.")
         return
     proposal = select(candidates, profile, " ".join(turns))
+    proposal = history.refine(proposal, candidates, profile.horizon_years)
+    try:
+        analysis = history.analyse(proposal.items, proposal.weights, profile.horizon_years)
+    except Exception:  # the report falls back to the illustrative simulation
+        analysis = None
     try:
         investment_allocation(proposal.weights, profile.amount)
     except ValueError as exc:
@@ -175,8 +180,8 @@ def propose(funds, source: str, select, decide):
     others = brochures.without_history(state.get("documents") or {}, profile)
     say(summary_text(proposal, profile, notes), result={
         "proposal": proposal, "profile": profile, "eligible": diagnostics["eligible"], "criteria": how,
-        "others": others, "excluded": {key: diagnostics[key] for key in ("sri", "minimum")},
-        "pdf": build_pdf(proposal, profile, turns, source, notes, how, others),
+        "others": others, "excluded": {key: diagnostics[key] for key in ("sri", "minimum")}, "analysis": analysis,
+        "pdf": build_pdf(proposal, profile, turns, source, notes, how, others, analysis),
     })
 
 
@@ -201,6 +206,13 @@ def _show_result(message: dict, key: int):
     st.caption(f"{result['eligible']} fondos superaron los filtros. Selección y pesos: {proposal.method}.")
     if result.get("criteria"):
         st.caption(f"Criterios decididos por el modelo y aplicados a todo el catálogo: {result['criteria']}.")
+    analysis = result.get("analysis")
+    if analysis:
+        together = (f"; correlación media entre los fondos {analysis.mean_correlation:.2f}".replace(".", ",")
+                    if analysis.mean_correlation is not None else "")
+        st.caption(f"Con el histórico diario de {analysis.weeks} semanas, la cartera en conjunto tuvo una volatilidad "
+                   f"anual del {analysis.volatility * 100:.1f} % y una caída máxima del "
+                   f"{abs(analysis.max_drawdown) * 100:.1f} %{together}.")
     excluded = result.get("excluded") or {}
     if excluded.get("sri") or excluded.get("minimum"):
         st.caption(f"Descartados por su documentación: {excluded['sri']} por riesgo oficial superior al perfil "

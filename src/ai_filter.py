@@ -124,7 +124,8 @@ def _prompt(candidates: list[Recommendation], preferences: Preferences, conversa
         "4. A igualdad de lo demás, prefiere costes más bajos cuando el dato aparece.\n"
         f"5. Diversificación: evita repetir la misma gestora o la misma estrategia. "
         f"Asigna entre el {lower_weight:.0%} y el {upper_weight:.0%} a cada fondo.\n\n"
-        "Devuelve JSON con «seleccion» (id del fondo y peso en porcentaje entero; los pesos suman 100) y "
+        "Devuelve JSON con «seleccion» (en «id», el número que el fondo tiene en la lista, no su nombre; "
+        "en «peso», el porcentaje entero; los pesos suman 100) y "
         "«comentario» (una sola frase breve en español que explique la cartera al cliente)."
     )
 
@@ -287,6 +288,19 @@ def decide(preferences: Preferences, conversation: str) -> Criteria | None:
         return None
 
 
+def _candidate_index(value, candidates: list[Recommendation]) -> int | None:
+    """Position (from 1) of the candidate the model means. Without a schema to constrain it, the
+    model sometimes answers with the fund's exact name instead of its number."""
+    if type(value) is int:
+        return value if 1 <= value <= len(candidates) else None
+    if not isinstance(value, str) or value.strip().isdigit():
+        return None
+    wanted = normalize(value.strip())
+    names = [normalize(item.fund.name) for item in candidates]
+    exact = [index for index, name in enumerate(names, start=1) if name == wanted]
+    return exact[0] if len(exact) == 1 else None
+
+
 def _validated(answer: dict, candidates: list[Recommendation], preferences: Preferences, limit: int) -> tuple[list[Recommendation], list[float], str]:
     if not isinstance(answer, dict) or not isinstance(answer.get("seleccion"), list):
         raise ValueError("Selección no válida")
@@ -294,8 +308,8 @@ def _validated(answer: dict, candidates: list[Recommendation], preferences: Pref
     for entry in answer["seleccion"]:
         if not isinstance(entry, dict):
             continue
-        index = entry.get("id")
-        if type(index) is not int or not 1 <= index <= len(candidates) or index in seen:
+        index = _candidate_index(entry.get("id"), candidates)
+        if index is None or index in seen:
             continue
         seen.add(index)
         chosen.append(candidates[index - 1])

@@ -227,3 +227,4 @@ models/
 # Catalogo con licencia: nunca al repositorio
 catalogo_fondos.md
 folletos/
+*.parquet

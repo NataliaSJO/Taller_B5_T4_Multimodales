@@ -138,6 +138,12 @@ class ProposalTests(unittest.TestCase):
                          [self.candidates[1].fund.isin, self.candidates[0].fund.isin])
         self.assertEqual(shares, [0.5, 0.5])
 
+    def test_model_may_name_the_fund_instead_of_numbering_it(self):
+        answer = {"comentario": "", "seleccion": [
+            {"id": self.candidates[1].fund.name, "peso": 50}, {"id": 1, "peso": 50}, {"id": "Fondo inventado", "peso": 10}]}
+        chosen, _, _ = ai_filter._validated(answer, self.candidates, self.profile, 2)
+        self.assertEqual([item.fund.isin for item in chosen], [self.candidates[1].fund.isin, self.candidates[0].fund.isin])
+
     def test_concentrated_weights_are_replaced(self):
         answer = {"comentario": "", "seleccion": [{"id": 1, "peso": 95}, {"id": 2, "peso": 5}]}
         chosen, shares, _ = ai_filter._validated(answer, self.candidates, self.profile, 5)
