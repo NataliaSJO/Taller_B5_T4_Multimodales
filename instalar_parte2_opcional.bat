@@ -21,6 +21,9 @@ if errorlevel 1 (
 set PY=.venv\Scripts\python.exe
 rem PyTorch con CUDA sale de su propio indice; en PyPI solo esta la version de CPU.
 rem torchvision va con el: si no, otro paquete lo traeria de PyPI y cambiaria PyTorch por el de CPU.
+rem Si ya hay un PyTorch sin CUDA (por ejemplo, el de CPU de PyPI), se sustituye.
+%PY% -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)" >nul 2>&1
+if errorlevel 1 %PY% -m pip install --force-reinstall --no-deps torch torchvision --index-url https://download.pytorch.org/whl/cu128
 %PY% -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 if errorlevel 1 goto error
 %PY% -m pip install -r requirements-gpu.txt
