@@ -6,7 +6,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from src import ai_filter, tts, ui
+from src import ai_filter, audio, tts, ui
 from src.audio import AUDIO_TYPES, transcribe_audio
 from src.conversation import GREETING, extra_question, merge, parse_turn, question
 
@@ -53,8 +53,12 @@ with st.sidebar:
     st.write(f"**Datos:** {source}")
     st.write(f"**Voz de respuesta:** {tts.label()}")
     if st.button("Nueva conversación"):
-        state.clear()
+        ui.new_conversation(GREETING)
         st.rerun()
+    ui.profile_panel(funds, source, ai_filter.select, ai_filter.decide)
+
+# While the user is still talking, load what the first answer will need.
+ui.warm_up(audio.warm, *((ai_filter.warm,) if chosen == "gpu" else ()))
 
 st.title("FondoClaro")
 if is_demo:
@@ -68,14 +72,18 @@ if entry:
     try:
         with st.spinner("Transcribiendo con Whisper local..."):
             spoken = [transcribe_audio(clip.getvalue(), Path(clip.name).suffix or ".wav") for clip in clips]
-    except (ValueError, RuntimeError, OSError) as exc:
-        st.error(str(exc))
-        st.stop()
+    except Exception as exc:   # an unreadable recording: the conversation goes on
+        spoken, text = [], ""
+        st.session_state.audio_error = str(exc)
     text = " ".join(part for part in (*spoken, text) if part).strip()
     with st.spinner("Pensando..."):
-        if text:
-            handle(text, funds, source)
-        else:  # said aloud so that a hands-free conversation keeps going
-            ui.say("No te he oído bien. ¿Puedes repetirlo?")
+        try:
+            if text:
+                handle(text, funds, source)
+            else:  # said aloud so that a hands-free conversation keeps going
+                ui.say("No te he oído bien. ¿Puedes repetirlo?")
+        except Exception as exc:   # nothing may leave the conversation without an answer
+            ui.say(f"He tenido un problema al preparar la respuesta ({type(exc).__name__}). "
+                   "Lo que me has dicho está guardado; puedes repetirlo o corregir el perfil en el panel lateral.")
     state.messages[-1]["seconds"] = time.perf_counter() - started
     st.rerun()

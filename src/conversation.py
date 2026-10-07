@@ -3,11 +3,16 @@
 import re
 from dataclasses import replace
 
-from .models import Preferences
+from .models import MAX_HORIZON, WINDOWS, Preferences, metric_years
 from .money import format_money, parse_money
 from .preferences import WORDS, explicit_choice, normalize, parse_heuristic, requested_funds, risk_choice
 
-HORIZONS = (1, 3, 5)
+HORIZONS = WINDOWS  # windows with catalog metrics; any horizon up to MAX_HORIZON is accepted
+
+
+def valid_horizon(years) -> bool:
+    return type(years) is int and 1 <= years <= MAX_HORIZON
+
 REQUIRED = ("horizon_years", "risk", "currency")
 THEMATIC = ("region", "sector", "asset_class")
 # What an adviser would also ask. Optional: asked once, never required.
@@ -32,7 +37,7 @@ EXTRA = {
 }
 LOWER_RISK = {"alto": "medio", "medio": "bajo"}
 QUESTIONS = {
-    "horizon_years": "durante cuántos años quieres mantener la inversión: uno, tres o cinco",
+    "horizon_years": "durante cuántos años quieres mantener la inversión",
     "risk": "qué nivel de riesgo aceptas: bajo, medio o alto",
     "currency": "en qué divisa quieres invertir, por ejemplo euros o dólares",
     "amount": "un importe positivo inferior a mil millones, con un máximo de dos decimales",
@@ -91,7 +96,7 @@ def merge(profile: Preferences, new: Preferences) -> Preferences:
 
 def missing(profile: Preferences) -> tuple[str, ...]:
     return tuple(field for field in REQUIRED
-                 if (profile.horizon_years not in HORIZONS if field == "horizon_years"
+                 if (not valid_horizon(profile.horizon_years) if field == "horizon_years"
                      else not getattr(profile, field))) + (("amount",) if profile.amount_needs_clarification else ())
 
 
@@ -101,7 +106,7 @@ def describe(profile: Preferences) -> str:
         parts.append(f"{format_money(profile.amount)} {CURRENCY_NAMES.get(profile.currency, profile.currency or '')}".strip())
     elif profile.currency:
         parts.append(CURRENCY_NAMES.get(profile.currency, profile.currency))
-    if profile.horizon_years in HORIZONS:
+    if valid_horizon(profile.horizon_years):
         parts.append(f"{profile.horizon_years} {'año' if profile.horizon_years == 1 else 'años'}")
     if profile.risk:
         parts.append(f"riesgo {profile.risk}")
@@ -118,9 +123,8 @@ def question(profile: Preferences) -> str:
     fields = missing(profile)
     understood = describe(profile)
     text = f"De momento he entendido: {understood}. " if understood else ""
-    if profile.horizon_years is not None and profile.horizon_years not in HORIZONS:
-        text += (f"Has dicho {profile.horizon_years} años, pero solo tengo datos históricos "
-                 "a uno, tres o cinco años. ")
+    if profile.horizon_years is not None and not valid_horizon(profile.horizon_years):
+        text += f"Has dicho {profile.horizon_years} años, pero necesito un plazo entre 1 y {MAX_HORIZON} años. "
     asks = [QUESTIONS[field] for field in fields]
     return text + "Para recomendarte fondos necesito saber " + " y ".join(asks) + "."
 
@@ -144,6 +148,10 @@ def advise(profile: Preferences) -> tuple[Preferences, list[str]]:
     if profile.experience == "baja" and risk == "alto":
         notes.append("Como es tu primera experiencia con fondos, he bajado el riesgo de alto a medio.")
         risk = "medio"
+    if valid_horizon(profile.horizon_years) and profile.horizon_years not in WINDOWS:
+        window = metric_years(profile.horizon_years)
+        notes.append(f"Para comparar fondos uso sus cifras a {window} {'año' if window == 1 else 'años'}, la ventana "
+                     f"del catálogo más cercana a tus {profile.horizon_years} años.")
     if profile.objective == "rentas":
         notes.append("El catálogo no informa de repartos de dividendos, así que he priorizado la estabilidad.")
     return replace(profile, risk=risk), notes

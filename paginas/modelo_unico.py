@@ -8,7 +8,7 @@ import streamlit as st
 
 from src import omni, tts, ui
 from src.audio import to_wav
-from src.conversation import GREETING, extra_question, question
+from src.conversation import GREETING, extra_question, parse_turn, question
 
 AUDIO = (".wav", ".mp3", ".flac", ".ogg")
 IMAGES = (".png", ".jpg", ".jpeg")
@@ -19,10 +19,12 @@ def handle(text: str, audio: list[str], images: list[str], funds, source: str):
     history = [(message["role"], message["text"]) for message in state.messages]
     try:
         new, transcript, ask = omni.understand(history, state.profile, text, audio, images)
-    except ValueError:  # the model did not return usable JSON
-        state.messages.append({"role": "user", "text": text or "(mensaje de voz)"})
-        ui.say("No te he entendido bien. ¿Puedes repetirlo con otras palabras?")
-        return
+    except Exception:  # unusable JSON, a model error or the GPU: recover with what was typed, if anything
+        if not text:
+            state.messages.append({"role": "user", "text": "(mensaje de voz)"})
+            ui.say("No te he entendido bien. ¿Puedes repetirlo con otras palabras?")
+            return
+        new, transcript, ask = parse_turn(text, state.pending), text, ""
     state.messages.append({"role": "user", "text": transcript or text or "(mensaje de voz)"})
     if not ui.update_preferences(new, transcript or text):
         return
@@ -48,13 +50,16 @@ with st.sidebar:
     st.write(f"**Voz de respuesta:** {tts.label()} (el modelo no genera voz)")
     st.caption("La primera respuesta tarda más: hay que cargar el modelo en la GPU.")
     if st.button("Nueva conversación"):
-        state.clear()
+        ui.new_conversation(GREETING)
         st.rerun()
+    if omni.available():
+        ui.profile_panel(funds, source, omni.select, omni.decide)
 
 st.title("FondoClaro · modelo único")
 if not omni.available():
     st.error("Falta el modelo de esta versión. Ejecuta instalar_parte2_opcional.bat (necesita una tarjeta NVIDIA).")
     st.stop()
+ui.warm_up(omni.warm)
 speak = ui.render_messages()
 
 entry = ui.turn_input([suffix[1:] for suffix in AUDIO + IMAGES], speak)
@@ -72,6 +77,10 @@ if entry:
             path.write_bytes(payload)
             (images if suffix in IMAGES else audio).append(str(path))
         with st.spinner("Pensando..."):
-            handle(text, audio, images, funds, source)
+            try:
+                handle(text, audio, images, funds, source)
+            except Exception as exc:   # nothing may leave the conversation without an answer
+                ui.say(f"He tenido un problema al preparar la respuesta ({type(exc).__name__}). "
+                       "Puedes repetirlo o corregir el perfil en el panel lateral.")
     state.messages[-1]["seconds"] = time.perf_counter() - started
     st.rerun()

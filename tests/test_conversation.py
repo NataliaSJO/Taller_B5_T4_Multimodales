@@ -37,8 +37,12 @@ class DialogueTests(unittest.TestCase):
 
     def test_unsupported_horizon_is_asked_again(self):
         profile = merge(Preferences(), parse_turn("euros, riesgo bajo, a 10 años"))
-        self.assertEqual(missing(profile), ("horizon_years",))
-        self.assertIn("uno, tres o cinco", question(profile))
+        self.assertEqual(missing(profile), ())                 # any horizon up to 30 years is accepted
+        self.assertEqual(profile.horizon_years, 10)
+        self.assertTrue(any("5 años" in note for note in advise(profile)[1]))   # funds compared on the 5-year window
+        too_long = merge(Preferences(), parse_turn("euros, riesgo bajo, a 45 años"))
+        self.assertEqual(missing(too_long), ("horizon_years",))
+        self.assertIn("entre 1 y 30", question(too_long))
 
     def test_later_turn_overrides_and_relax_drops_filters(self):
         profile = merge(Preferences(5, "medio", "EUR", region="asia"), parse_turn("mejor riesgo bajo"))

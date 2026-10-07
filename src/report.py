@@ -18,7 +18,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .conversation import CURRENCY_NAMES
-from .models import Preferences, Proposal
+from .models import Preferences, Proposal, metric_years
 from .money import format_money, investment_allocation
 from .recommender import CUTOFF, RISK
 
@@ -63,11 +63,12 @@ def summary_text(proposal: Proposal, preferences: Preferences, notes: list[str] 
         parts.append(f"Has pedido {preferences.fund_count} fondos, pero solo hay {count} disponibles tras los filtros.")
     for index, (item, share) in enumerate(zip(proposal.items, shares)):
         ret, vol, _ = item.fund.metrics(years)
+        window = metric_years(years)
         amount = (f", {format_money(allocation.amounts[index], False).removesuffix(',00')} {currency}"
                   if allocation.amounts is not None else "")
         name = " ".join(re.sub(r"[^\w&.,' -]", " ", item.fund.name).split())
         parts.append(f"{ORDINALS[index]}, {name}, con aproximadamente el {str(share).replace('.', ',')} por ciento{amount}. "
-                     f"En {years} {'año' if years == 1 else 'años'} acumuló una rentabilidad del "
+                     f"En {window} {'año' if window == 1 else 'años'} acumuló una rentabilidad del "
                      f"{_spoken(ret)} por ciento con una volatilidad del {_spoken(vol)} por ciento.")
     parts.append("Tienes el detalle en el documento PDF. Recuerda que es una preselección educativa "
                  "basada en datos históricos y no un asesoramiento financiero.")
@@ -99,7 +100,7 @@ def _chart(proposal: Proposal, years: int) -> Drawing:
     chart.bars.strokeColor = None
     legend = Legend()
     legend.x, legend.y, legend.fontSize, legend.alignment = 13.2 * cm, 4.6 * cm, 8, "right"
-    legend.colorNamePairs = [(TEAL, f"Rentabilidad {years} a. (%)"), (NAVY, "Volatilidad (%)")]
+    legend.colorNamePairs = [(TEAL, f"Rentabilidad {metric_years(years)} a. (%)"), (NAVY, "Volatilidad (%)")]
     drawing.add(chart)
     drawing.add(legend)
     return drawing
@@ -109,9 +110,10 @@ def capital_evolution(proposal: Proposal, amount: float, years: int) -> list[tup
     """Monthly illustration using each fund's cumulative historical return, without rebalancing."""
     returns = [item.fund.metrics(years)[0] for item in proposal.items]
     allocation = investment_allocation(proposal.weights, amount)
+    window = metric_years(years)
     return [
         (month / 12, fsum(
-            float(initial) * (1 + ret) ** (month / (12 * years))
+            float(initial) * (1 + ret) ** (month / (12 * window))
             for initial, ret in zip(allocation.amounts, returns)
         ))
         for month in range(years * 12 + 1)
@@ -137,6 +139,40 @@ def _capital_chart(points: list[tuple[float, float]], years: int, currency: str)
     drawing.add(chart)
     drawing.add(String(2.5 * cm, 6.4 * cm, f"Capital ({currency})", fontSize=9, fillColor=NAVY))
     drawing.add(String(9 * cm, 0.3 * cm, "Años desde la inversión", fontSize=9, textAnchor="middle"))
+    return drawing
+
+
+def scenario_points(rate: float, years: int, base: float) -> list[tuple[float, float]]:
+    """Capital over the horizon if every year repeated the given yearly return."""
+    return [(month / 12, base * (1 + rate) ** (month / 12)) for month in range(years * 12 + 1)]
+
+
+def _scenario_chart(analysis, years: int, base: float, currency: str) -> Drawing:
+    """Three lines: every year like the worst, the median and the best year the portfolio has lived."""
+    drawing = Drawing(16 * cm, 7.4 * cm)
+    chart = LinePlot()
+    chart.x, chart.y, chart.width, chart.height = 2.5 * cm, 1.2 * cm, 9.6 * cm, 4.8 * cm
+    scenarios = ((analysis.worst_year, colors.HexColor("#c0392b"), "Como el peor año"),
+                 (analysis.median_year, NAVY, "Como un año medio"),
+                 (analysis.best_year, TEAL, "Como el mejor año"))
+    chart.data = [scenario_points(rate, years, base) for rate, _, _ in scenarios]
+    for index, (_, color, _) in enumerate(scenarios):
+        chart.lines[index].strokeColor = color
+        chart.lines[index].strokeWidth = 2
+    chart.xValueAxis.valueMin, chart.xValueAxis.valueMax = 0, years
+    chart.xValueAxis.valueSteps = list(range(0, years + 1, max(1, years // 10)))
+    chart.xValueAxis.labels.fontSize = 8
+    chart.yValueAxis.labels.fontSize = 8
+    chart.yValueAxis.labelTextFormat = lambda value: f"{value:,.0f}".replace(",", ".")
+    values = [value for line in chart.data for _, value in line]
+    chart.yValueAxis.valueMin, chart.yValueAxis.valueMax = 0, max(values) * 1.05
+    legend = Legend()
+    legend.x, legend.y, legend.fontSize, legend.alignment = 12.6 * cm, 5.2 * cm, 8, "right"
+    legend.colorNamePairs = [(color, f"{label} ({_pct(rate, signed=True)})") for rate, color, label in scenarios]
+    drawing.add(chart)
+    drawing.add(legend)
+    drawing.add(String(2.5 * cm, 6.5 * cm, f"Capital ({currency})", fontSize=9, fillColor=NAVY))
+    drawing.add(String(7.3 * cm, 0.3 * cm, "Años desde la inversión", fontSize=9, textAnchor="middle"))
     return drawing
 
 
@@ -186,7 +222,8 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
     story += [Paragraph(f"<b>Ajuste del asesor:</b> {_text(note)}", body) for note in notes]
 
     story.append(Paragraph("Cartera propuesta", heading))
-    rows = [["#", "Fondo", "Peso aprox.", "Importe", f"Rent. {years} a.", "Volatilidad", "Sharpe"]]
+    window = metric_years(years)
+    rows = [["#", "Fondo", "Peso aprox.", "Importe", f"Rent. {window} a.", "Volatilidad", "Sharpe"]]
     for index, (item, share) in enumerate(zip(proposal.items, shares), start=1):
         ret, vol, sharpe = item.fund.metrics(years)
         amount = f"{format_money(allocation.amounts[index - 1])} {currency}" if allocation.amounts is not None else "—"
@@ -203,8 +240,8 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
                            "los importes asignados a céntimos cuando se indica una inversión.", small))
     weighted = sum(item.fund.metrics(years)[0] * weight for item, weight in zip(proposal.items, allocation.weights))
     story.append(Spacer(1, 4))
-    story.append(Paragraph(f"Rentabilidad acumulada histórica de la cartera a {years} "
-                           f"{'año' if years == 1 else 'años'}, ponderada por peso: <b>{_pct(weighted, signed=True)}</b>.", body))
+    story.append(Paragraph(f"Rentabilidad acumulada histórica de la cartera a {window} "
+                           f"{'año' if window == 1 else 'años'}, ponderada por peso: <b>{_pct(weighted, signed=True)}</b>.", body))
     if proposal.comment:
         story.append(Paragraph(_text(proposal.comment), body))
     story.append(_chart(proposal, years))
@@ -223,10 +260,27 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
             f"<b>{_pct(analysis.total_return, signed=True)}</b>.{together} No se descuentan impuestos ni costes "
             "adicionales y no es una previsión.", small))
         story.append(_capital_chart(points, max(1, round(points[-1][0])), currency if preferences.amount else "base 100"))
-    story.append(Paragraph("Evolución ilustrativa de tu capital", heading))
+    if analysis and analysis.worst_year is not None:
+        base = float(preferences.amount) if preferences.amount else 100.0
+        unit = currency if preferences.amount else "base 100"
+        ends = [scenario_points(rate, years, base)[-1][1]
+                for rate in (analysis.worst_year, analysis.median_year, analysis.best_year)]
+        story.append(Paragraph("Escenarios según su peor, su mejor y un año medio", heading))
+        story.append(Paragraph(
+            f"De los {analysis.year_windows} periodos de doce meses que caben en el histórico real de la cartera, el peor "
+            f"dio un <b>{_pct(analysis.worst_year, signed=True)}</b>, el mediano un "
+            f"<b>{_pct(analysis.median_year, signed=True)}</b> y el mejor un "
+            f"<b>{_pct(analysis.best_year, signed=True)}</b>. El gráfico muestra tu capital durante {years} "
+            f"{'año' if years == 1 else 'años'} si todos los años se repitiera cada uno de ellos: acabaría en "
+            f"<b>{format_money(ends[0])}</b>, <b>{format_money(ends[1])}</b> y <b>{format_money(ends[2])}</b> {_text(unit)}. "
+            "Es una ilustración para dimensionar el riesgo: repetir el peor o el mejor año todos los años es muy "
+            "improbable, el pasado no anticipa el futuro y, como los fondos se han elegido por su buen comportamiento "
+            "pasado, estas cifras tienden a ser optimistas.", small))
+        story.append(_scenario_chart(analysis, years, base, unit))
     if analysis:
-        story.append(Paragraph("Sustituida por la serie histórica real del apartado anterior.", small))
+        pass    # the real series above replaces the illustrative simulation
     elif preferences.amount is not None and preferences.amount > 0:
+        story.append(Paragraph("Evolución ilustrativa de tu capital", heading))
         points = capital_evolution(proposal, preferences.amount, years)
         story.append(Paragraph(
             "Simulación, no una previsión ni una serie histórica real. Se anualiza la rentabilidad "
@@ -240,6 +294,7 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
             f"Capital inicial: <b>{format_money(initial)} {_text(currency)}</b>. "
             f"Capital final en esta simulación a {years} años: <b>{format_money(final)} {_text(currency)}</b>.", body))
     else:
+        story.append(Paragraph("Evolución ilustrativa de tu capital", heading))
         story.append(Paragraph(
             "No se ha indicado un importe de inversión. Indica cuánto quieres invertir para "
             "incluir el gráfico de evolución del capital.", body))

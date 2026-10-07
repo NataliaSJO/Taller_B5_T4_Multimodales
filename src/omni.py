@@ -24,6 +24,12 @@ def available() -> bool:
     return (OMNI_PATH / "config.json").is_file()
 
 
+def warm():
+    """Load the multimodal model ahead of the first turn."""
+    from .hf_model import load
+    load(OMNI_PATH)
+
+
 def listen(audio: list[str] = (), images: list[str] = ()) -> str:
     """What the client says in the attached audio (and any text shown in attached images)."""
     ask = "Transcribe exactamente lo que dice el audio, en español. Devuelve solo la transcripción."

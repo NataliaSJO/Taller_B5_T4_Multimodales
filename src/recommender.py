@@ -5,7 +5,7 @@ import re
 from dataclasses import replace
 from datetime import date
 
-from .models import Criteria, Fund, Preferences, Recommendation
+from .models import MAX_HORIZON, Criteria, Fund, Preferences, Recommendation, metric_years
 from .preferences import normalize
 
 CUTOFF = date(2026, 10, 5)
@@ -144,8 +144,9 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
               criteria: Criteria | None = None) -> tuple[list[Recommendation], dict]:
     """Filter and score the whole catalog. `criteria` (decided by a model) tunes the search, but the
     hard constraints stay: currency, recent data and the volatility ceiling of the declared risk."""
-    if preferences.horizon_years not in (1, 3, 5):
-        raise ValueError("Elige un horizonte de 1, 3 o 5 años")
+    if type(preferences.horizon_years) is not int or not 1 <= preferences.horizon_years <= MAX_HORIZON:
+        raise ValueError(f"Elige un horizonte entre 1 y {MAX_HORIZON} años")
+    window = metric_years(preferences.horizon_years)   # funds are compared over this catalog window
     if preferences.risk not in RISK:
         raise ValueError("Indica un nivel de riesgo bajo, medio o alto")
     if not preferences.currency:
@@ -191,7 +192,7 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
         by_name = _thematic(fund, preferences)
         if by_name is None:
             continue
-        annual_return = (1 + ret) ** (1 / preferences.horizon_years) - 1
+        annual_return = (1 + ret) ** (1 / window) - 1
         if criteria and criteria.min_annual_return is not None and annual_return < criteria.min_annual_return:
             continue
         if wanted and not wanted.search(normalize(f"{fund.name} {fund.strategy} {fund.assets} {fund.regions} {fund.sectors}")):
@@ -206,7 +207,7 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
             score -= min(fund.costs, 3.0) * 0.02   # each point of yearly costs weighs on the choice
         ratio = "sin Sharpe verificable" if sharpe is None else f"Sharpe {sharpe:+.2f}"
         rationale = (f"Volatilidad histórica {vol:.1%} dentro del límite {max_vol:.0%} del perfil; "
-                     f"rentabilidad acumulada {ret:+.1%} a {preferences.horizon_years} años; {ratio}.")
+                     f"rentabilidad acumulada {ret:+.1%} a {window} {'año' if window == 1 else 'años'}; {ratio}.")
         if fund.brochure:
             facts = [f"riesgo oficial {fund.sri} de 7" if fund.sri else "",
                      f"costes corrientes {fund.costs:.2f} %".replace(".", ",") if fund.costs is not None else "",

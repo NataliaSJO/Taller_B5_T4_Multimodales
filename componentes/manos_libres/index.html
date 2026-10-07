@@ -28,6 +28,7 @@ function valor(v) { enviar("streamlit:setComponentValue", { value: v, dataType: 
 const SILENCIO_MS = 1300;      // silencio que da por terminada la frase
 const MAX_FRASE_MS = 30000;    // duración máxima de una intervención
 const ESPERA_MS = 60000;       // sin voz durante este tiempo, deja de escuchar
+const RESPUESTA_MS = 180000;   // sin respuesta en este tiempo, deja de esperar
 const boton = document.getElementById("boton");
 const estado = document.getElementById("estado");
 const barra = document.querySelector("#nivel span");
@@ -36,7 +37,7 @@ let activo = false;            // el usuario ha pulsado «Empezar»
 let fase = "parado";           // parado | hablando | escuchando | pensando
 let ultimoId = null;           // último turno del asesor ya atendido
 let pendiente = "";            // audio del asesor aún no reproducido
-let audio = null, flujo = null, contexto = null, grabadora = null, bucle = null;
+let audio = null, flujo = null, contexto = null, grabadora = null, bucle = null, espera = null;
 
 function mostrar(texto, nuevaFase) { fase = nuevaFase; estado.textContent = texto; }
 
@@ -90,6 +91,12 @@ async function escuchar() {
       if (!conVoz) { activo = false; boton.textContent = "🎧 Seguir conversando"; boton.className = "";
                      mostrar("He dejado de escuchar. Pulsa para seguir.", "parado"); return; }
       mostrar("💭 Pensando…", "pensando");
+      clearTimeout(espera);
+      espera = setTimeout(() => {
+        if (fase !== "pensando") return;
+        activo = false; boton.textContent = "🎧 Seguir conversando"; boton.className = "";
+        mostrar("La respuesta está tardando demasiado. Pulsa para seguir o escribe tu mensaje.", "parado");
+      }, RESPUESTA_MS);
       const lector = new FileReader();
       lector.onloadend = () => valor({ id: Date.now(), audio: lector.result.split(",")[1], mime: tipo });
       lector.readAsDataURL(new Blob(trozos, { type: tipo }));
@@ -144,6 +151,7 @@ window.addEventListener("message", evento => {
   const args = evento.data.args || {};
   if (args.play_id === ultimoId) return;         // el mismo turno: nada nuevo que decir
   ultimoId = args.play_id;
+  clearTimeout(espera);
   pendiente = args.play || "";
   if (activo && fase !== "escuchando") hablar(); // llega la respuesta: decirla y volver a escuchar
 });

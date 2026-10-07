@@ -20,6 +20,7 @@ from .recommender import CUTOFF, allocation_limits, valid_allocation
 
 TOO_SIMILAR = 0.95     # weekly-return correlation above which two funds count as the same bet
 MIN_WEEKS = 26
+SCENARIO_YEARS = 15     # past used to find the worst, median and best twelve months
 FILE = "fondos_diarios.parquet"
 
 
@@ -79,6 +80,11 @@ class Analysis:
     total_return: float
     mean_correlation: float | None
     points: tuple[tuple[float, float], ...]   # (years since start, value of 1 invested)
+    # Twelve-month returns of the portfolio over all the history its funds share
+    worst_year: float | None = None
+    median_year: float | None = None
+    best_year: float | None = None
+    year_windows: int = 0
 
 
 def analyse(items, weights, years: int) -> Analysis | None:
@@ -86,8 +92,18 @@ def analyse(items, weights, years: int) -> Analysis | None:
     if not available() or not items:
         return None
     isins = [item.fund.isin for item in items]
-    prices, returns = _returns(isins, years)
-    if prices is None:
+    long_prices, _ = _returns(isins, max(years, SCENARIO_YEARS))
+    if long_prices is None:
+        return None
+    whole = (long_prices / long_prices.iloc[0]).mul(list(weights), axis=1).sum(axis=1)
+    yearly = whole.pct_change(52).dropna()
+    scenarios = ((float(yearly.min()), float(yearly.median()), float(yearly.max()), len(yearly))
+                 if len(yearly) >= MIN_WEEKS else (None, None, None, 0))
+    # The evolution and the risk figures refer to the client's horizon (or what there is of it).
+    start = long_prices.index[-1] - timedelta(days=round(365.25 * years))
+    prices = long_prices[long_prices.index >= start]
+    returns = prices.pct_change().dropna()
+    if len(returns) < MIN_WEEKS:
         return None
     value = (prices / prices.iloc[0]).mul(list(weights), axis=1).sum(axis=1)
     weekly = value.pct_change().dropna()
@@ -103,6 +119,7 @@ def analyse(items, weights, years: int) -> Analysis | None:
         total_return=float(value.iloc[-1] - 1),
         mean_correlation=float(sum(pairs) / len(pairs)) if pairs else None,
         points=tuple((float(span[index]), float(value.iloc[index])) for index in range(0, len(value), step)),
+        worst_year=scenarios[0], median_year=scenarios[1], best_year=scenarios[2], year_windows=scenarios[3],
     )
 
 

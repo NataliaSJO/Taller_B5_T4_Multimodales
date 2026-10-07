@@ -1,5 +1,13 @@
 from dataclasses import dataclass
 
+WINDOWS = (1, 3, 5)     # years for which the catalog has return, volatility and Sharpe
+MAX_HORIZON = 30
+
+
+def metric_years(years: int) -> int:
+    """Catalog window used to compare funds for a horizon: the longest one that fits in it."""
+    return max((window for window in WINDOWS if window <= years), default=WINDOWS[0])
+
 
 @dataclass(frozen=True)
 class Preferences:
@@ -48,11 +56,13 @@ class Fund:
     brochure: str = ""                # fuente del documento
 
     def metrics(self, years: int) -> tuple[float | None, float | None, float | None]:
-        if years not in (1, 3, 5):
-            raise ValueError("Solo se admiten horizontes de 1, 3 y 5 años")
-        return (getattr(self, f"return_{years}y"),
-                getattr(self, f"vol_{years}y"),
-                getattr(self, f"sharpe_{years}y"))
+        """Return, volatility and Sharpe over the catalog window that corresponds to `years`."""
+        if type(years) is not int or not 1 <= years <= MAX_HORIZON:
+            raise ValueError(f"El horizonte debe estar entre 1 y {MAX_HORIZON} años")
+        window = metric_years(years)
+        return (getattr(self, f"return_{window}y"),
+                getattr(self, f"vol_{window}y"),
+                getattr(self, f"sharpe_{window}y"))
 
 
 @dataclass(frozen=True)

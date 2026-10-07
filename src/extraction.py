@@ -1,6 +1,6 @@
 """Understand one turn of the client with a language model: profile data and next question."""
 
-from .conversation import HORIZONS
+from .conversation import valid_horizon
 from .models import Preferences
 from .preferences import ASSET_CLASSES, REGIONS, SECTORS
 
@@ -84,6 +84,6 @@ def read(answer: dict) -> tuple[Preferences, str]:
     """Validated preferences and the model's next question (empty when it should not be used)."""
     new = to_preferences(answer)
     ask = " ".join(str(answer.get("pregunta") or "").split())
-    if new.horizon_years is not None and new.horizon_years not in HORIZONS:
-        ask = ""  # the page explains that only 1, 3 and 5 years have data
+    if new.horizon_years is not None and not valid_horizon(new.horizon_years):
+        ask = ""  # the page explains which horizons are accepted
     return new, ask

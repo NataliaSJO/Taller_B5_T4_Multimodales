@@ -41,6 +41,12 @@ def _load(path: str, four_bit: bool):
     return _gpu.loaded[path, four_bit]
 
 
+def load(path: Path, four_bit: bool = False):
+    """Make sure this model is the one in memory (it replaces whichever was loaded)."""
+    with _gpu.lock:
+        _load(str(path), four_bit)
+
+
 def generate(path: Path, content: list[dict], max_new_tokens: int, four_bit: bool = False) -> str:
     """Answer one user message made of text, audio and image parts."""
     import torch

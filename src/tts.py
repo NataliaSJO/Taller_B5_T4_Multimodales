@@ -79,4 +79,7 @@ def synthesize(text: str) -> bytes | None:
             return _online(text)
         except Exception:  # no network or service change: use the local voice from now on
             _state["online_failed"] = True
-    return _piper(text) if _piper_available() else None
+    try:
+        return _piper(text) if _piper_available() else None
+    except Exception:  # a broken voice must not take the text, the table or the PDF with it
+        return None

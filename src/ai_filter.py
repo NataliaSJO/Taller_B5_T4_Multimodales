@@ -17,7 +17,7 @@ import math
 import os
 from functools import lru_cache
 
-from .models import Criteria, Preferences, Proposal, Recommendation
+from .models import Criteria, Preferences, Proposal, Recommendation, metric_years
 from .hf_model import generate, gpu_available, parse_json
 from .paths import GPU_LLM_PATH, LLM_PATH
 from .preferences import normalize
@@ -98,7 +98,7 @@ def _prompt(candidates: list[Recommendation], preferences: Preferences, conversa
         ratio = "sin dato" if sharpe is None else f"{sharpe:+.2f}"
         official = "".join((f" | riesgo oficial {item.fund.sri}/7" if item.fund.sri else "",
                             f" | costes {item.fund.costs:.2f}%" if item.fund.costs is not None else ""))
-        lines.append(f"{index}. {item.fund.name} | rentabilidad {years} años {ret:+.1%} | "
+        lines.append(f"{index}. {item.fund.name} | rentabilidad {metric_years(years)} años {ret:+.1%} | "
                      f"volatilidad {vol:.1%} | Sharpe {ratio}{official}")
     wishes = [f"{name}: {value}" for name, value in (("zona geográfica", preferences.region), ("sector", preferences.sector),
                                                      ("clase de activo", preferences.asset_class)) if value]
@@ -126,7 +126,7 @@ def _prompt(candidates: list[Recommendation], preferences: Preferences, conversa
         f"Asigna entre el {lower_weight:.0%} y el {upper_weight:.0%} a cada fondo.\n\n"
         "Devuelve JSON con «seleccion» (en «id», el número que el fondo tiene en la lista, no su nombre; "
         "en «peso», el porcentaje entero; los pesos suman 100) y "
-        "«comentario» (una sola frase breve en español que explique la cartera al cliente)."
+        "«comentario» (una sola frase en español, de menos de 25 palabras, que explique la cartera al cliente)."
     )
 
 
@@ -134,6 +134,12 @@ def _prompt(candidates: list[Recommendation], preferences: Preferences, conversa
 def _llama():
     from llama_cpp import Llama
     return Llama(model_path=str(LLM_PATH), n_ctx=4096, verbose=False)
+
+
+def warm():
+    """Load the GPU model ahead of the first proposal."""
+    from .hf_model import load
+    load(GPU_LLM_PATH, four_bit=True)
 
 
 def _ask_gpu(prompt: str, schema: dict) -> dict:
@@ -197,10 +203,9 @@ CRITERIA_SCHEMA = {
         "volatilidad_objetivo": {"type": "number"},
         "rentabilidad_minima_anual": {"type": ["number", "null"]},
         "palabras_clave": {"type": "array", "items": {"type": "string"}},
-        "explicacion": {"type": "string"},
     },
     "required": ["peso_riesgo", "peso_sharpe", "peso_rentabilidad", "volatilidad_objetivo",
-                 "rentabilidad_minima_anual", "palabras_clave", "explicacion"],
+                 "rentabilidad_minima_anual", "palabras_clave"],
     "additionalProperties": False,
 }
 
@@ -225,8 +230,7 @@ def criteria_prompt(preferences: Preferences, conversation: str) -> str:
         "- rentabilidad_minima_anual: rentabilidad anual mínima que exiges a un fondo, en porcentaje, o null.\n"
         "- palabras_clave: solo si el cliente ha pedido un tema, sector, zona o tipo de activo concreto, las palabras "
         "que deben aparecer en el nombre del fondo, con variantes en español y en inglés porque casi todos los "
-        "nombres están en inglés. Si no ha pedido nada concreto, lista vacía.\n"
-        "- explicacion: una frase que justifique los criterios."
+        "nombres están en inglés. Si no ha pedido nada concreto, lista vacía."
     )
 
 

@@ -18,6 +18,11 @@ def _model():
     return WhisperModel(source, device="cpu", compute_type="int8")
 
 
+def warm():
+    """Load Whisper ahead of the first recording."""
+    _model()
+
+
 def to_wav(payload: bytes, rate: int = 16000) -> bytes:
     """Any audio (webm from the browser, mp3, m4a...) -> mono 16-bit WAV."""
     import av
