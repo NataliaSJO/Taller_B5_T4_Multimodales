@@ -10,15 +10,14 @@ Todo se ejecuta en local con modelos descargados de Hugging Face. No hace falta 
 
 Necesitas [Python 3.11](https://www.python.org/downloads/).
 
-1. Doble clic en **`instalar.bat`**. Crea el entorno, instala las dependencias y descarga los modelos básicos (1 GB). Funciona en cualquier equipo, sin GPU.
-2. Doble clic en **`iniciar.bat`**. Arranca la aplicación y abre `index.html`, la puerta de entrada con los enlaces.
+1. Copia `catalogo_fondos.md` (no está en el repositorio) a la carpeta del proyecto. Sin él se usan 10 fondos sintéticos de ejemplo.
+2. Doble clic en **`instalar.bat`**. Crea el entorno, instala las dependencias, descarga los modelos básicos (1,4 GB) e importa el catálogo si lo encuentra. Funciona en cualquier equipo, sin GPU.
+3. Doble clic en **`iniciar.bat`**. Arranca la aplicación y abre `index.html`, la puerta de entrada con los enlaces.
+4. Opcional, solo con una NVIDIA de 12 GB o más: doble clic en **`instalar_parte2_opcional.bat`**. Instala PyTorch con CUDA y descarga 19 GB de modelos. Añade el filtro con Gemma 3 4B y la versión de modelo único.
 
-La aplicación queda en `http://localhost:8501`. Recién instalada usa 10 fondos sintéticos de ejemplo.
+La aplicación queda en `http://localhost:8501`. Clona el proyecto en una ruta corta (por ejemplo `C:\proyectos\`): en rutas muy largas la instalación falla por el límite de Windows.
 
-Opcional:
-
-- **Modelos de GPU** (NVIDIA con 12 GB o más; descarga 19 GB): ejecuta `instalar.bat gpu` desde una terminal. Añade el filtro con Gemma 3 4B y la versión de modelo único.
-- **Catálogo real** (no está en el repositorio): `.venv\Scripts\python scripts\import_catalog.py ruta\a\catalogo_fondos.md`.
+Para importar el catálogo más tarde: `.venv\Scripts\python scripts\import_catalog.py ruta\a\catalogo_fondos.md`.
 
 A mano, sin los `.bat`:
 
@@ -181,6 +180,7 @@ El filtro también puede hacerlo Claude por API. Está preparado pero **no se ha
 
 ```text
 instalar.bat, iniciar.bat  Instalación y arranque con doble clic
+instalar_parte2_opcional.bat  Modelos de GPU, opcional
 index.html                 Portada con los enlaces a la aplicación
 app.py                     Punto de entrada y navegación
 paginas/                   Especialistas, Modelo único, Pruebas y estado

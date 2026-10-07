@@ -12,12 +12,12 @@ st.title("Pruebas y estado")
 
 st.subheader("Qué hay instalado")
 checks = [
-    ("Catálogo real importado", PRIVATE_CATALOG.is_file(), "python scripts/import_catalog.py <catalogo_fondos.md>"),
-    ("Whisper (voz a texto)", (WHISPER_DIR / "model.bin").is_file(), "python scripts/download_models.py"),
-    ("Piper (texto a voz)", tts.available(), "python scripts/download_models.py"),
-    ("Gemma 3 1B (filtro en CPU)", LLM_PATH.is_file(), "python scripts/download_models.py"),
-    ("Gemma 3 4B (filtro en GPU)", (GPU_LLM_PATH / "config.json").is_file(), "python scripts/download_models.py --gpu"),
-    ("Gemma 3n (modelo único)", omni.available(), "python scripts/download_models.py --omni"),
+    ("Catálogo real importado", PRIVATE_CATALOG.is_file(), "Copia catalogo_fondos.md al proyecto y ejecuta instalar.bat"),
+    ("Whisper (voz a texto)", (WHISPER_DIR / "model.bin").is_file(), "instalar.bat"),
+    ("Piper (texto a voz)", tts.available(), "instalar.bat"),
+    ("Gemma 3 1B (filtro en CPU)", LLM_PATH.is_file(), "instalar.bat"),
+    ("Gemma 3 4B (filtro en GPU)", (GPU_LLM_PATH / "config.json").is_file(), "instalar_parte2_opcional.bat"),
+    ("Gemma 3n (modelo único)", omni.available(), "instalar_parte2_opcional.bat"),
     ("GPU con CUDA", hf_model.gpu_available(), "Sin GPU funcionan el filtro en CPU y las reglas"),
     ("Clave de Claude (opcional)", ai_filter.available("claude"), "ANTHROPIC_API_KEY en .env; deshabilitado por defecto"),
 ]

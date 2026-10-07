@@ -56,7 +56,7 @@ with st.sidebar:
 
 st.title("FondoClaro · modelo único")
 if not omni.available():
-    st.error("Falta el modelo. Descárgalo con: python scripts/download_models.py --omni")
+    st.error("Falta el modelo de esta versión. Ejecuta instalar_parte2_opcional.bat (necesita una tarjeta NVIDIA).")
     st.stop()
 ui.render_messages()
 

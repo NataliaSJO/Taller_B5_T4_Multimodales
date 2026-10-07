@@ -1,7 +1,7 @@
 @echo off
 rem Prepara FondoClaro tras clonar el repositorio. Doble clic; despues usa iniciar.bat.
-rem   instalar.bat        version basica: funciona en cualquier equipo (CPU), descarga 1 GB
-rem   instalar.bat gpu    anade los modelos de GPU (NVIDIA con 12 GB o mas), descarga 19 GB mas
+rem Funciona en cualquier equipo (CPU) y descarga 1,4 GB de modelos.
+rem Para los modelos de GPU, ejecuta despues instalar_parte2_opcional.bat.
 cd /d "%~dp0"
 
 py -3.11 --version >nul 2>&1
@@ -16,20 +16,26 @@ set PY=.venv\Scripts\python.exe
 %PY% -m pip install --upgrade pip
 %PY% -m pip install -r requirements.txt --only-binary=llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 if errorlevel 1 goto error
-
-if /i "%1"=="gpu" (
-    %PY% -m pip install -r requirements-gpu.txt --extra-index-url https://download.pytorch.org/whl/cu128
-    if errorlevel 1 goto error
-    %PY% scripts\download_models.py --gpu --omni
-) else (
-    %PY% scripts\download_models.py
-)
+%PY% scripts\download_models.py
 if errorlevel 1 goto error
+
+rem El catalogo real no esta en el repositorio: se importa si esta junto al proyecto.
+set CATALOGO=
+if exist "catalogo_fondos.md" set CATALOGO=catalogo_fondos.md
+if exist "..\datos\catalogo_fondos.md" set CATALOGO=..\datos\catalogo_fondos.md
+if defined CATALOGO (
+    %PY% scripts\import_catalog.py "%CATALOGO%"
+    if errorlevel 1 goto error
+)
 
 echo.
 echo Listo. Haz doble clic en iniciar.bat para abrir la aplicacion.
-echo Sin el catalogo real se usan 10 fondos de ejemplo. Para importarlo:
-echo   %PY% scripts\import_catalog.py ruta\a\catalogo_fondos.md
+if not defined CATALOGO (
+    echo No se ha encontrado catalogo_fondos.md: se usaran 10 fondos de ejemplo.
+    echo Copialo a esta carpeta y vuelve a ejecutar instalar.bat, o importalo con:
+    echo   %PY% scripts\import_catalog.py ruta\a\catalogo_fondos.md
+)
+echo Opcional, con tarjeta NVIDIA: instalar_parte2_opcional.bat
 pause
 exit /b 0
 

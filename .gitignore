@@ -223,3 +223,6 @@ __marimo__/
 data/private/
 models/
 .venv-omni/
+
+# Catalogo con licencia: nunca al repositorio
+catalogo_fondos.md
