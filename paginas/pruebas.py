@@ -27,7 +27,7 @@ st.caption(f"Filtro que se usará por defecto: {ai_filter.label()}.")
 
 st.subheader("Pruebas automáticas")
 st.write("Comprueban el diálogo, los filtros, la validación de las respuestas del modelo y la generación del PDF. "
-         "No cargan los modelos, así que tardan menos de un segundo.")
+         "Incluyen los flujos de ambas páginas con modelos simulados. No cargan modelos reales y pueden tardar varios segundos.")
 if st.button("Ejecutar pruebas", type="primary"):
     run = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],
                          cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")

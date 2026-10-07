@@ -8,7 +8,7 @@ import streamlit as st
 
 from src import ai_filter, tts, ui
 from src.audio import AUDIO_TYPES, transcribe_audio
-from src.conversation import GREETING, extra_question, is_yes, merge, missing, parse_turn, question, relax
+from src.conversation import GREETING, extra_question, parse_turn, question
 
 FILTERS = {"gpu": "Gemma 3 4B en GPU", "local": "Gemma 3 1B en CPU", "claude": "Claude por API", "off": "Solo reglas"}
 
@@ -16,12 +16,8 @@ FILTERS = {"gpu": "Gemma 3 4B en GPU", "local": "Gemma 3 1B en CPU", "claude": "
 def handle(text: str, funds, source: str):
     state = st.session_state
     state.messages.append({"role": "user", "text": text})
-    pending_relax = state.pop("relax", None)
-    if pending_relax and is_yes(text):
-        state.profile = relax(state.profile, pending_relax)
-    else:
-        state.profile = merge(state.profile, parse_turn(text, state.pending))
-    state.pending = missing(state.profile)
+    if not ui.update_preferences(parse_turn(text, state.pending), text):
+        return
     extra = None if state.pending or state.get("extra_asked") else extra_question(state.profile)
     if state.pending:
         ui.say(question(state.profile))

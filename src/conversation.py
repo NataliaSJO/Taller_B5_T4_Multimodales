@@ -4,7 +4,8 @@ import re
 from dataclasses import replace
 
 from .models import Preferences
-from .preferences import WORDS, normalize, parse_heuristic
+from .money import format_money, parse_money
+from .preferences import WORDS, explicit_choice, normalize, parse_heuristic, requested_funds, risk_choice
 
 HORIZONS = (1, 3, 5)
 REQUIRED = ("horizon_years", "risk", "currency")
@@ -34,6 +35,7 @@ QUESTIONS = {
     "horizon_years": "durante cuántos años quieres mantener la inversión: uno, tres o cinco",
     "risk": "qué nivel de riesgo aceptas: bajo, medio o alto",
     "currency": "en qué divisa quieres invertir, por ejemplo euros o dólares",
+    "amount": "un importe positivo inferior a mil millones, con un máximo de dos decimales",
 }
 CURRENCY_NAMES = {"EUR": "euros", "USD": "dólares", "GBP": "libras", "CHF": "francos suizos"}
 GREETING = ("Hola, soy FondoClaro. Cuéntame, escribiendo o hablando, cuánto quieres invertir, "
@@ -45,18 +47,20 @@ def parse_turn(text: str, pending: tuple[str, ...] = ()) -> Preferences:
     """Parse one user turn; bare answers such as «cinco» or «medio» count if we asked for them."""
     parsed = parse_heuristic(text)
     clean = normalize(text)
+    if "amount" in pending:
+        mentioned, amount, currency = parse_money(clean, allow_bare=True)
+        if mentioned:
+            parsed = replace(parsed, amount=amount, currency=currency or parsed.currency,
+                             amount_needs_clarification=amount is None)
     if "horizon_years" in pending and parsed.horizon_years is None:
         match = re.search(r"(?<![\d.,])(\d{1,2})(?![.,]?\d)|\b(uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b", clean)
         if match:
             parsed = replace(parsed, horizon_years=int(match.group(1)) if match.group(1) else WORDS[match.group(2)])
     if "risk" in pending and parsed.risk is None:
-        for risk, pattern in (("bajo", r"\b(bajo|baja|poco)\b"), ("alto", r"\b(alto|alta|mucho)\b"),
-                              ("medio", r"\b(medio|media|intermedio)\b")):
-            if re.search(pattern, clean):
-                parsed = replace(parsed, risk=risk)
-                break
+        _, risk = risk_choice(clean, bare=True)
+        parsed = replace(parsed, risk=risk)
     for field, (_, options) in EXTRA.items():
-        value = next((value for value, pattern in options if re.search(pattern, clean)), None)
+        _, value = explicit_choice(clean, options)
         if value:
             parsed = replace(parsed, **{field: value})
     return parsed
@@ -69,7 +73,7 @@ def merge(profile: Preferences, new: Preferences) -> Preferences:
         horizon_years=new.horizon_years if new.horizon_years is not None else profile.horizon_years,
         risk=new.risk or profile.risk,
         currency=new.currency or profile.currency,
-        amount=new.amount if new.amount is not None else profile.amount,
+        amount=None if new.amount_needs_clarification else new.amount if new.amount is not None else profile.amount,
         region=new.region or profile.region,
         sector=new.sector or profile.sector,
         excluded_sectors=excluded,
@@ -78,19 +82,23 @@ def merge(profile: Preferences, new: Preferences) -> Preferences:
         objective=new.objective or profile.objective,
         experience=new.experience or profile.experience,
         loss_reaction=new.loss_reaction or profile.loss_reaction,
+        fund_count=(new.fund_count if new.fund_count is not None else
+                    None if new.diversification is not None else profile.fund_count),
+        amount_needs_clarification=(new.amount_needs_clarification or
+                                   (new.amount is None and profile.amount_needs_clarification)),
     )
 
 
 def missing(profile: Preferences) -> tuple[str, ...]:
     return tuple(field for field in REQUIRED
                  if (profile.horizon_years not in HORIZONS if field == "horizon_years"
-                     else not getattr(profile, field)))
+                     else not getattr(profile, field))) + (("amount",) if profile.amount_needs_clarification else ())
 
 
 def describe(profile: Preferences) -> str:
     parts = []
     if profile.amount is not None:
-        parts.append(f"{profile.amount:.0f} {CURRENCY_NAMES.get(profile.currency, profile.currency or '')}".strip())
+        parts.append(f"{format_money(profile.amount)} {CURRENCY_NAMES.get(profile.currency, profile.currency or '')}".strip())
     elif profile.currency:
         parts.append(CURRENCY_NAMES.get(profile.currency, profile.currency))
     if profile.horizon_years in HORIZONS:
@@ -100,6 +108,8 @@ def describe(profile: Preferences) -> str:
     parts.extend(value for value in (profile.region, profile.sector, profile.asset_class) if value)
     if profile.diversification:
         parts.append(f"diversificación {profile.diversification}")
+    if profile.fund_count:
+        parts.append(f"{profile.fund_count} {'fondo' if profile.fund_count == 1 else 'fondos'}")
     return ", ".join(parts)
 
 
@@ -140,7 +150,56 @@ def advise(profile: Preferences) -> tuple[Preferences, list[str]]:
 
 
 def is_yes(text: str) -> bool:
-    return bool(re.search(r"\b(si|vale|de acuerdo|adelante|ok|okey|claro|continua|quitalo|quitala|hazlo)\b", normalize(text)))
+    return relaxation_answer(text) is True
+
+
+def relaxation_answer(text: str) -> bool | None:
+    """Only an unambiguous assent can remove a pending restriction."""
+    clean = normalize(text).strip(" .!¿?¡")
+    if re.search(r"\b(no|nunca|jamas|tampoco|manten\w*|conserv\w*|dejalo|dejala)\b", clean):
+        return False
+    if re.search(r"\b(?:con|respetando)\s+(?:la |las |esa |esas )?(?:exclusion\w*|restriccion\w*|preferencia\w*|filtro\w*)", clean):
+        return False
+    # Match complete utterances, not a keyword hidden in a conditional or a new request.
+    assent = r"(?:si|vale|de acuerdo|adelante|ok|okey|claro|continua|quitalo|quitala|quitalos|quitalas|hazlo)"
+    removal = r"(?:(?:sigue|continua) sin (?:ella|ellas|el|ellos|esa exclusion|ese filtro)|quita (?:esa exclusion|ese filtro))"
+    if re.fullmatch(rf"(?:{assent}|{removal})(?:[\s,;]+(?:{assent}|{removal}))*(?:,? por favor)?", clean):
+        return True
+    return None
+
+
+def apply_turn(profile: Preferences, new: Preferences, text: str,
+               pending: tuple[str, ...] = (), pending_relax: tuple[str, ...] = ()):
+    """Shared dialogue transition for both pages, including explicit denials.
+
+    Return the profile, any still-pending relaxation, and a reply when selection
+    must stop. A rejected or ambiguous restriction change never triggers a proposal.
+    """
+    updated = merge(profile, new)
+    mentioned, amount, currency = parse_money(normalize(text), allow_bare="amount" in pending)
+    if mentioned:
+        updated = replace(updated, amount=amount, currency=currency or updated.currency,
+                          amount_needs_clarification=amount is None)
+    count = requested_funds(text)
+    if count is not None:
+        updated = replace(updated, fund_count=count)
+    mentioned, risk = risk_choice(text, bare="risk" in pending)
+    if mentioned:
+        updated = replace(updated, risk=risk)
+    for field, (_, options) in EXTRA.items():
+        mentioned, value = explicit_choice(text, options)
+        if mentioned:
+            updated = replace(updated, **{field: value})
+    if pending_relax:
+        answer = relaxation_answer(text)
+        if answer is True:
+            return relax(updated, pending_relax), (), ""
+        if answer is False:
+            return updated, (), ("Mantengo tus restricciones. Con los datos actuales no puedo generar "
+                                 "una propuesta que las cumpla. Puedes cambiar tus preferencias.")
+        return updated, pending_relax, ("Mantengo tus restricciones. ¿Quieres retirarlas para continuar? "
+                                        "Responde «sí, quítalas» o «no, mantenlas».")
+    return updated, (), ""
 
 
 def relax(profile: Preferences, fields: tuple[str, ...]) -> Preferences:

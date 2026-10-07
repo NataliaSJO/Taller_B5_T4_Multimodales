@@ -3,6 +3,8 @@
 import io
 import re
 from datetime import date
+from decimal import Decimal
+from math import fsum
 from xml.sax.saxutils import escape
 
 from reportlab.graphics.charts.barcharts import VerticalBarChart
@@ -17,6 +19,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 from .conversation import CURRENCY_NAMES
 from .models import Preferences, Proposal
+from .money import format_money, investment_allocation
 from .recommender import CUTOFF, RISK
 
 NAVY = colors.HexColor("#173553")
@@ -28,14 +31,16 @@ DISCLAIMER = ("Preselección educativa basada en datos históricos. No es asesor
 ORDINALS = ("Primero", "Segundo", "Tercero", "Cuarto", "Quinto", "Sexto", "Séptimo")
 
 
-def percents(weights) -> list[int]:
-    """Whole percentages that add up to exactly 100 (largest remainder)."""
-    raw = [weight * 100 for weight in weights]
+def percents(weights, decimals: int = 0):
+    """Display percentages adding up to 100; never used to calculate money."""
+    scale = 10 ** decimals
+    decimal_weights = [Decimal(str(weight)) for weight in weights]
+    raw = [weight / sum(decimal_weights) * 100 * scale for weight in decimal_weights]
     result = [int(value) for value in raw]
     by_remainder = sorted(range(len(raw)), key=lambda index: raw[index] - result[index], reverse=True)
-    for index in by_remainder[:100 - sum(result)]:
+    for index in by_remainder[:100 * scale - sum(result)]:
         result[index] += 1
-    return result
+    return result if not decimals else [Decimal(value) / scale for value in result]
 
 
 def _spoken(value: float) -> str:
@@ -46,18 +51,22 @@ def summary_text(proposal: Proposal, preferences: Preferences, notes: list[str] 
     """What the assistant says aloud: where to invest, given the conversation."""
     years = preferences.horizon_years
     currency = CURRENCY_NAMES.get(preferences.currency, preferences.currency)
-    shares = percents(proposal.weights)
-    what = f"los {preferences.amount:.0f} {currency}" if preferences.amount else "tu inversión"
+    allocation = investment_allocation(proposal.weights, preferences.amount)
+    shares = percents(allocation.weights, 2)
+    what = f"los {format_money(preferences.amount, False).removesuffix(',00')} {currency}" if preferences.amount else "tu inversión"
     count = len(proposal.items)
     parts = [*notes, f"Con lo que me has contado, he buscado fondos en {currency} para un plazo de "
              f"{years} {'año' if years == 1 else 'años'} y un riesgo {preferences.risk}. "
              + (f"Te propongo repartir {what} entre {count} fondos." if count > 1
-                else f"Solo un fondo cumple tus criterios, así que {what} iría a ese fondo.")]
+                else f"Te propongo invertir {what} en un fondo.")]
+    if preferences.fund_count and count < preferences.fund_count:
+        parts.append(f"Has pedido {preferences.fund_count} fondos, pero solo hay {count} disponibles tras los filtros.")
     for index, (item, share) in enumerate(zip(proposal.items, shares)):
         ret, vol, _ = item.fund.metrics(years)
-        amount = f", unos {preferences.amount * share / 100:.0f} {currency}" if preferences.amount else ""
+        amount = (f", {format_money(allocation.amounts[index], False).removesuffix(',00')} {currency}"
+                  if allocation.amounts is not None else "")
         name = " ".join(re.sub(r"[^\w&.,' -]", " ", item.fund.name).split())
-        parts.append(f"{ORDINALS[index]}, {name}, con el {share} por ciento{amount}. "
+        parts.append(f"{ORDINALS[index]}, {name}, con aproximadamente el {str(share).replace('.', ',')} por ciento{amount}. "
                      f"En {years} {'año' if years == 1 else 'años'} acumuló una rentabilidad del "
                      f"{_spoken(ret)} por ciento con una volatilidad del {_spoken(vol)} por ciento.")
     parts.append("Tienes el detalle en el documento PDF. Recuerda que es una preselección educativa "
@@ -99,10 +108,11 @@ def _chart(proposal: Proposal, years: int) -> Drawing:
 def capital_evolution(proposal: Proposal, amount: float, years: int) -> list[tuple[float, float]]:
     """Monthly illustration using each fund's cumulative historical return, without rebalancing."""
     returns = [item.fund.metrics(years)[0] for item in proposal.items]
+    allocation = investment_allocation(proposal.weights, amount)
     return [
-        (month / 12, amount * sum(
-            weight * (1 + ret) ** (month / (12 * years))
-            for weight, ret in zip(proposal.weights, returns)
+        (month / 12, fsum(
+            float(initial) * (1 + ret) ** (month / (12 * years))
+            for initial, ret in zip(allocation.amounts, returns)
         ))
         for month in range(years * 12 + 1)
     ]
@@ -141,7 +151,8 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
 
     years = preferences.horizon_years
     currency = preferences.currency
-    shares = percents(proposal.weights)
+    allocation = investment_allocation(proposal.weights, preferences.amount)
+    shares = percents(allocation.weights, 2)
     grid = TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), NAVY), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 8),
@@ -159,7 +170,9 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
     profile_rows = [("Horizonte", f"{years} {'año' if years == 1 else 'años'}"),
                     ("Riesgo aplicado", f"{preferences.risk} (volatilidad histórica hasta el {RISK[preferences.risk][1]:.0%})"),
                     ("Divisa", currency),
-                    ("Importe", f"{preferences.amount:,.0f} {currency}".replace(",", ".") if preferences.amount else "no indicado")]
+                    ("Importe", f"{format_money(preferences.amount)} {currency}" if preferences.amount else "no indicado")]
+    if preferences.fund_count:
+        profile_rows.append(("Fondos solicitados", str(preferences.fund_count)))
     profile_rows += [(name, value) for name, value in (("Región", preferences.region), ("Sector", preferences.sector),
                                                        ("Clase de activo", preferences.asset_class),
                                                        ("Diversificación", preferences.diversification),
@@ -173,17 +186,22 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
     story += [Paragraph(f"<b>Ajuste del asesor:</b> {_text(note)}", body) for note in notes]
 
     story.append(Paragraph("Cartera propuesta", heading))
-    rows = [["#", "Fondo", "Peso", "Importe", f"Rent. {years} a.", "Volatilidad", "Sharpe"]]
+    rows = [["#", "Fondo", "Peso aprox.", "Importe", f"Rent. {years} a.", "Volatilidad", "Sharpe"]]
     for index, (item, share) in enumerate(zip(proposal.items, shares), start=1):
         ret, vol, sharpe = item.fund.metrics(years)
-        amount = f"{preferences.amount * share / 100:,.0f} {currency}".replace(",", ".") if preferences.amount else "—"
+        amount = f"{format_money(allocation.amounts[index - 1])} {currency}" if allocation.amounts is not None else "—"
         rows.append([str(index), Paragraph(f"<b>{_text(item.fund.name)}</b><br/>{_text(item.fund.isin)}", cell),
-                     f"{share} %", amount, _pct(ret, signed=True), _pct(vol),
+                     f"{str(share).replace('.', ',')} %", amount, _pct(ret, signed=True), _pct(vol),
                      "—" if sharpe is None else f"{sharpe:+.2f}".replace(".", ",")])
     table = Table(rows, colWidths=[0.7 * cm, 6.8 * cm, 1.4 * cm, 2.4 * cm, 1.8 * cm, 1.9 * cm, 1.4 * cm], repeatRows=1)
     table.setStyle(grid)
     story.append(table)
-    weighted = sum(item.fund.metrics(years)[0] * weight for item, weight in zip(proposal.items, proposal.weights))
+    if preferences.fund_count and len(proposal.items) < preferences.fund_count:
+        story.append(Paragraph(f"Se solicitaron {preferences.fund_count} fondos; solo hay "
+                               f"{len(proposal.items)} disponibles tras los filtros.", body))
+    story.append(Paragraph("Los porcentajes se muestran redondeados a dos decimales. Los cálculos usan "
+                           "los importes asignados a céntimos cuando se indica una inversión.", small))
+    weighted = sum(item.fund.metrics(years)[0] * weight for item, weight in zip(proposal.items, allocation.weights))
     story.append(Spacer(1, 4))
     story.append(Paragraph(f"Rentabilidad acumulada histórica de la cartera a {years} "
                            f"{'año' if years == 1 else 'años'}, ponderada por peso: <b>{_pct(weighted, signed=True)}</b>.", body))
@@ -203,8 +221,8 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
         story.append(_capital_chart(points, years, currency))
         initial, final = points[0][1], points[-1][1]
         story.append(Paragraph(
-            f"Capital inicial: <b>{initial:,.2f} {_text(currency)}</b>. "
-            f"Capital final en esta simulación a {years} años: <b>{final:,.2f} {_text(currency)}</b>.", body))
+            f"Capital inicial: <b>{format_money(initial)} {_text(currency)}</b>. "
+            f"Capital final en esta simulación a {years} años: <b>{format_money(final)} {_text(currency)}</b>.", body))
     else:
         story.append(Paragraph(
             "No se ha indicado un importe de inversión. Indica cuánto quieres invertir para "
@@ -221,14 +239,17 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
         "Sharpe y rentabilidad anualizada, con más peso de la rentabilidad si el objetivo es crecer y más peso "
         "de la estabilidad si es conservar. "
         "Las preferencias de zona, sector o clase de activo se comprueban con la ficha verificada del fondo o, "
-        "si no existe, con su nombre. Solo se incluye una clase de participación por fondo. El catálogo no "
+        "si no existe, con su nombre. Las posibles clases de un mismo fondo se agrupan por nombre; "
+        "esta identificación es aproximada. El catálogo no "
         "informa de mínimos de suscripción: se consideran todos los fondos y, por debajo de 100.000, entre las "
         "clases de un mismo fondo se prefiere la que no parece institucional. El mínimo real debe comprobarse "
         "en el folleto. "
         + (f"Antes de filtrar, el modelo decidió estos criterios, que se aplicaron a todo el catálogo: {_text(criteria)}. "
            if criteria else "")
         + f"Selección final y pesos: {_text(proposal.method)}. Cuando el modelo no propone un reparto válido, los pesos "
-        "son inversamente proporcionales a la volatilidad de cada fondo. No se dispone de correlaciones entre fondos, "
+        "se calculan a partir de la inversa de la volatilidad, con un mínimo del 5 % y un máximo del 60 % "
+        "por fondo (80 % si hay dos; 100 % si solo hay uno). Estos límites también se aplican a los pesos del modelo. "
+        "No se dispone de correlaciones entre fondos, "
         "por lo que el reparto no es una optimización de cartera completa.", body))
     story.append(Spacer(1, 8))
     story.append(Paragraph(DISCLAIMER, small))

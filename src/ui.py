@@ -8,8 +8,9 @@ import streamlit as st
 
 from . import tts
 from .catalog import load_catalog
-from .conversation import THEMATIC, advise
+from .conversation import THEMATIC, advise, apply_turn, missing
 from .models import Preferences
+from .money import investment_allocation
 from .paths import DEMO_CATALOG, PRIVATE_CATALOG
 from .recommender import recommend
 from .report import DISCLAIMER, build_pdf, percents, summary_text
@@ -77,6 +78,21 @@ def user_turns() -> list[str]:
     return [message["text"] for message in st.session_state.messages if message["role"] == "user"]
 
 
+def update_preferences(new: Preferences, text: str) -> bool:
+    """Apply a turn consistently in both versions; False means a reply was sent."""
+    state = st.session_state
+    state.profile, pending_relax, reply = apply_turn(
+        state.profile, new, text, state.pending, state.get("relax", ()))
+    state.pending = missing(state.profile)
+    if pending_relax:
+        state.relax = pending_relax
+    else:
+        state.pop("relax", None)
+    if reply:
+        say(reply)
+    return not reply
+
+
 def propose(funds, source: str, select, decide):
     """All required data is known: filter, select, and build the PDF and the audio summary.
 
@@ -109,6 +125,13 @@ def propose(funds, source: str, select, decide):
                 f"y riesgo {profile.risk}. Dime otra divisa, otro plazo u otro nivel de riesgo y lo vuelvo a intentar.")
         return
     proposal = select(candidates, profile, " ".join(turns))
+    try:
+        investment_allocation(proposal.weights, profile.amount)
+    except ValueError as exc:
+        state.profile = replace(state.profile, amount=None, amount_needs_clarification=True)
+        state.pending = missing(state.profile)
+        say(str(exc))
+        return
     how = criteria.describe() if criteria else ""
     say(summary_text(proposal, profile, notes), result={
         "proposal": proposal, "profile": profile, "eligible": diagnostics["eligible"], "criteria": how,
@@ -120,13 +143,18 @@ def _show_result(result: dict, key: int, audio: bytes | None):
     proposal, profile = result["proposal"], result["profile"]
     years = profile.horizon_years
     rows = []
-    for item, share in zip(proposal.items, percents(proposal.weights)):
+    allocation = investment_allocation(proposal.weights, profile.amount)
+    for index, (item, share) in enumerate(zip(proposal.items, percents(allocation.weights, 2))):
         ret, vol, sharpe = item.fund.metrics(years)
-        rows.append({"Fondo": item.fund.name, "ISIN/ID": item.fund.isin, "Peso (%)": share,
-                     "Importe": round(profile.amount * share / 100) if profile.amount else None,
+        rows.append({"Fondo": item.fund.name, "ISIN/ID": item.fund.isin, "Peso aprox. (%)": float(share),
+                     "Importe": float(allocation.amounts[index]) if allocation.amounts is not None else None,
                      f"Rent. {years} a. (%)": round(ret * 100, 1), "Volatilidad (%)": round(vol * 100, 1),
                      "Sharpe": None if sharpe is None else round(sharpe, 2)})
-    st.dataframe(pd.DataFrame(rows), hide_index=True)
+    st.dataframe(pd.DataFrame(rows), hide_index=True, column_config={
+        "Importe": st.column_config.NumberColumn(format="%.2f"),
+        "Peso aprox. (%)": st.column_config.NumberColumn(format="%.2f"),
+    })
+    st.caption("Los porcentajes están redondeados; el informe y la simulación usan los importes asignados a céntimos.")
     st.caption(f"{result['eligible']} fondos superaron los filtros. Selección y pesos: {proposal.method}.")
     if result.get("criteria"):
         st.caption(f"Criterios decididos por el modelo y aplicados a todo el catálogo: {result['criteria']}.")
