@@ -14,7 +14,7 @@ Los modelos se descargan de Hugging Face y se ejecutan en local; no hace falta n
 | Python | 3.11, con el lanzador `py` (viene con el instalador de python.org) | El mismo |
 | Procesador y memoria | Cualquier CPU reciente; 8 GB de RAM | 16 GB de RAM |
 | Tarjeta gráfica | No hace falta | NVIDIA con 12 GB de memoria o más y controlador reciente (se instala PyTorch para CUDA 12.8) |
-| Disco | 4 GB (entorno 2,5 GB y modelos 1,4 GB) | 25 GB más (PyTorch 5 GB y modelos 19 GB) |
+| Disco | 3 GB (entorno y 1,4 GB de modelos) | 24 GB más (PyTorch con CUDA y 19 GB de modelos) |
 | Internet | Para instalar; después solo para la voz neuronal | Para instalar |
 | Navegador | Chrome o Edge recientes, con permiso de micrófono | El mismo |
 | Datos | `catalogo_fondos.md` (no está en el repositorio); sin él se usan 10 fondos de ejemplo | El mismo |

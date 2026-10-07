@@ -44,7 +44,7 @@ state = st.session_state
 with st.sidebar:
     st.header("Especialistas")
     st.write("Un modelo adaptado a cada paso: Whisper transcribe, unas reglas extraen los datos, "
-             "un modelo de lenguaje decide los criterios y elige los fondos, y Piper habla.")
+             "un modelo de lenguaje decide los criterios y elige los fondos, y una voz sintética responde.")
     options = [name for name in FILTERS if ai_filter.available(name)]
     chosen = st.selectbox("Quién elige los fondos", options, index=options.index(ai_filter.backend()),
                           format_func=FILTERS.get, help="Solo aparecen las opciones instaladas en este equipo.")
