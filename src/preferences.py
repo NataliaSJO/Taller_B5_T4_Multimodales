@@ -19,6 +19,12 @@ SECTORS = {
     "energía": ("energia", "energetico", "energeticos", "energetica", "energeticas"),
     "finanzas": ("finanzas", "financiero", "financieros", "financiera", "financieras", "bancos"),
 }
+ASSET_CLASSES = {
+    "renta fija": ("renta fija", "bonos", "deuda"),
+    "renta variable": ("renta variable", "acciones"),
+    "mixto": ("mixto", "mixta", "mixtos", "mixtas"),
+    "monetario": ("monetario", "monetarios", "liquidez"),
+}
 WORDS = {"un": 1, "uno": 1, "una": 1, "dos": 2, "tres": 3, "cuatro": 4,
          "cinco": 5, "seis": 6, "siete": 7, "ocho": 8, "nueve": 9, "diez": 10}
 
@@ -76,9 +82,13 @@ def parse_heuristic(text: str) -> Preferences:
                    if sector not in excluded and any(re.search(rf"\b{re.escape(word)}\b", clean) for word in words)), None)
     region = next((region for region, words in REGIONS.items()
                    if any(re.search(rf"\b{re.escape(word)}\b", clean) for word in words)), None)
+    asset_matches = {kind for kind, words in ASSET_CLASSES.items()
+                     if any(re.search(rf"\b{re.escape(word)}\b", clean) for word in words)}
+    asset_class = ("mixto" if {"renta fija", "renta variable"}.issubset(asset_matches)
+                   else next(iter(asset_matches)) if len(asset_matches) == 1 else None)
     return Preferences(horizon_years=horizon, risk=risk, currency=currency,
                        amount=_amount(clean), region=region, sector=sector,
-                       excluded_sectors=tuple(excluded))
+                       excluded_sectors=tuple(excluded), asset_class=asset_class)
 
 
 def parse_with_optional_llm(text: str, use_llm: bool = False) -> tuple[Preferences, str]:
@@ -97,12 +107,13 @@ def parse_with_optional_llm(text: str, use_llm: bool = False) -> tuple[Preferenc
             region: str | None
             sector: str | None
             excluded_sectors: list[str]
+            asset_class: str | None
 
         client = OpenAI(timeout=20.0, max_retries=1)
         response = client.responses.parse(
             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
             input=[
-                {"role": "system", "content": "Extrae únicamente preferencias explícitas del texto en español. No infieras edad, ingresos, situación patrimonial ni tolerancia al riesgo. Usa null si falta un dato. Riesgo: bajo, medio o alto. Moneda ISO. No recomiendes productos."},
+                {"role": "system", "content": "Extrae únicamente preferencias explícitas del texto en español. No infieras edad, ingresos, situación patrimonial ni tolerancia al riesgo. Usa null si falta un dato. Riesgo: bajo, medio o alto. Moneda ISO. Clase de activo: renta fija, renta variable, mixto o monetario. No recomiendes productos."},
                 {"role": "user", "content": text[:4000]},
             ],
             text_format=Extracted,
@@ -122,6 +133,7 @@ def parse_with_optional_llm(text: str, use_llm: bool = False) -> tuple[Preferenc
             region=parsed.region or base.region,
             sector=parsed.sector or base.sector,
             excluded_sectors=tuple(parsed.excluded_sectors or base.excluded_sectors),
+            asset_class=parsed.asset_class if parsed.asset_class in ASSET_CLASSES else base.asset_class,
         )
         return extracted, "Modelo de lenguaje + validación local"
     except Exception:

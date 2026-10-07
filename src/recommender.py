@@ -56,6 +56,24 @@ def _matches_sector(fund: Fund, sector: str) -> bool:
     return any(token in haystack for token in aliases.get(sector, (normalize(sector),)))
 
 
+def _matches_asset(fund: Fund, asset_class: str) -> bool:
+    if not _verified(fund.assets, fund.source_url):
+        return False
+    assets = normalize(fund.assets)
+    fixed = "renta fija" in assets or "bonos" in assets or "deuda" in assets
+    equity = "renta variable" in assets or "acciones" in assets
+    mixed = "mixto" in assets or "mixta" in assets or (fixed and equity)
+    if asset_class == "renta fija":
+        return fixed and not equity and not mixed
+    if asset_class == "renta variable":
+        return equity and not fixed and not mixed
+    if asset_class == "mixto":
+        return mixed
+    if asset_class == "monetario":
+        return "monetario" in assets or "liquidez" in assets
+    return False
+
+
 def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5) -> tuple[list[Recommendation], dict]:
     if preferences.horizon_years not in (1, 3, 5):
         raise ValueError("Elige un horizonte de 1, 3 o 5 años")
@@ -90,6 +108,8 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5) -> tu
         if preferences.region and not _matches_region(fund, preferences.region):
             continue
         if preferences.sector and not _matches_sector(fund, preferences.sector):
+            continue
+        if preferences.asset_class and not _matches_asset(fund, preferences.asset_class):
             continue
         counts["profile"] += 1
 

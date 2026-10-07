@@ -1,6 +1,6 @@
 # FondoClaro · recomendador multimodal de fondos (MVP)
 
-MVP del Taller B5-T4: el usuario describe en lenguaje natural su horizonte, tolerancia al riesgo, divisa y preferencias; el sistema devuelve una **preselección trazable** de fondos. Puede introducir texto o voz, comparar rendimientos mediante un gráfico y escuchar un resumen. El repositorio incluye un catálogo **sintético** para que la demo arranque sin claves ni descargas de datos financieros.
+MVP del Taller B5-T4: el usuario describe en lenguaje natural su horizonte, tolerancia al riesgo, divisa, región, sector o clase de activo; el sistema devuelve una **preselección trazable** de fondos. Puede introducir texto o voz, comparar rendimientos mediante un gráfico y escuchar un resumen. El repositorio incluye un catálogo **sintético** para que la demo arranque sin claves ni descargas de datos financieros.
 
 > Esta aplicación es una demostración educativa. No realiza un test de idoneidad, no verifica comisiones ni constituye asesoramiento de inversión. Los resultados históricos no garantizan rentabilidades futuras.
 
@@ -36,7 +36,7 @@ streamlit run app.py
 
 El importador crea `data/private/funds.csv`, ignorado por Git. La app lo detecta automáticamente y sustituye el catálogo de muestra. Si falta el archivo, vuelve al modo sintético. **No publiques el dataset EODHD ni las claves API sin comprobar la licencia y las autorizaciones correspondientes.**
 
-El catálogo privado contiene retornos acumulados, volatilidades anualizadas y ratios de Sharpe anualizados por ventana. El importador conserva valores no disponibles como celdas vacías. Regiones, sectores y estrategia solo se usan como filtros cuando hay una ficha externa enlazada; la mayoría de esos campos siguen sin verificar, por lo que una petición temática puede devolver cero candidatos. Una exclusión sectorial estricta requiere la composición completa y este MVP no la promete.
+El catálogo privado contiene retornos acumulados, volatilidades anualizadas y ratios de Sharpe anualizados por ventana. El importador conserva valores no disponibles como celdas vacías. Región, sector y clase de activo solo se usan como filtros cuando hay una ficha externa enlazada; la mayoría de esos campos siguen sin verificar, por lo que una petición temática puede devolver cero candidatos. Una exclusión sectorial estricta requiere la composición completa y este MVP no la promete.
 
 ## Modalidades y arquitectura
 
@@ -86,7 +86,7 @@ Activa la casilla de la interfaz. `gpt-4o-mini` extrae preferencias con salida e
 
 1. Se exige un horizonte de 1, 3 o 5 años, riesgo declarado y divisa. Se pueden corregir antes del cálculo.
 2. Se descartan clases de otra divisa, con datos incompletos o con última fecha a más de 30 días del corte. Se aplican límites de volatilidad históricos: bajo ≤10 %, medio ≤20 %, alto ≤35 %. Son umbrales de **prototipo**, no equivalen al SRI oficial.
-3. Los filtros de región o sector solo aceptan información con URL de perfil asociada al ISIN. Una petición de exclusión sectorial no genera candidatos mientras no exista composición completa verificable.
+3. Los filtros de región, sector o clase de activo solo aceptan información con URL de perfil asociada al ISIN. El usuario puede corregirlos antes de puntuar. Una petición de exclusión sectorial no genera candidatos mientras no exista composición completa verificable.
 4. Entre candidatos, la puntuación suma ajuste a volatilidad objetivo (55 %), Sharpe histórico (25 %) y rentabilidad anual equivalente (20 %). El Sharpe ausente **no se muestra como cero** y recibe una puntuación neutra conservadora en ese componente. Se muestra la razón y el dato usado en cada propuesta.
 5. Se limitan retornos y volatilidades extremos para evitar que posibles errores de proveedor dominen la muestra. Esto es un control del prototipo, no una validación externa de precios.
 
@@ -110,7 +110,7 @@ data/demo_funds.csv            Ejemplo sintético integrado
 data/private/                  Catálogo real local, ignorado por Git
 tests/                         Pruebas de extracción, importación y ranking
 docs/pitch.md                  Propuesta de valor y demo
-docs/pitch_fondoclaro.pptx     Presentación técnica de 5 diapositivas
+docs/pitch_fondoclaro_v2.pptx  Presentación técnica de 5 diapositivas
 docs/images/demo_result.jpg    Captura del modo sintético
 Multimodal_Cartera_Fondos.ipynb Primera etapa de voz de los compañeros
 ```

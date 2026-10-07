@@ -34,6 +34,10 @@ class PreferencesTests(unittest.TestCase):
     def test_plural_region(self):
         self.assertEqual(parse_heuristic("fondos globales a 5 años").region, "global")
 
+    def test_asset_class_is_preserved(self):
+        self.assertEqual(parse_heuristic("bonos en euros a cinco años").asset_class, "renta fija")
+        self.assertEqual(parse_heuristic("renta fija y renta variable").asset_class, "mixto")
+
 
 class RankingTests(unittest.TestCase):
     @classmethod
@@ -61,6 +65,10 @@ class RankingTests(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertIsNone(results[0].fund.sharpe_5y)
         self.assertIn("sin Sharpe", results[0].rationale)
+
+    def test_fixed_income_does_not_return_mixed_fund(self):
+        results, _ = recommend(self.funds, Preferences(5, "bajo", "EUR", asset_class="renta fija"))
+        self.assertEqual([item.fund.isin for item in results], ["DEMO000001"])
 
 
 class ImportTests(unittest.TestCase):

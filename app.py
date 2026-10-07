@@ -68,7 +68,7 @@ else:
 
 with st.sidebar:
     st.header("Cómo funciona")
-    st.write("1. Texto o voz → preferencias explícitas.\n\n2. Confirmas horizonte, riesgo y divisa.\n\n3. Filtros y puntuación reproducibles → propuesta con métricas y límites.")
+    st.write("1. Texto o voz → preferencias explícitas.\n\n2. Confirmas el perfil extraído.\n\n3. Filtros y puntuación reproducibles → propuesta con métricas y límites.")
     st.divider()
     st.write(f"**Fuente activa:** {'ejemplo sintético' if is_demo else 'catálogo local privado'}")
     st.write("**Corte de datos:** 05/10/2026")
@@ -128,17 +128,31 @@ with tab_recommend:
             horizon = c1.selectbox("Horizonte (años)", horizon_options, index=horizon_index)
             risk = c2.selectbox("Riesgo declarado", risk_options, index=risk_index)
             currency = c3.selectbox("Divisa de la clase", currencies, index=currency_index)
+            c4, c5, c6 = st.columns(3)
+            region_options = ["Sin preferencia", "global", "europa", "estados unidos", "asia", "emergentes"]
+            sector_options = ["Sin preferencia", "tecnología", "salud", "energía", "finanzas"]
+            asset_options = ["Sin preferencia", "renta fija", "renta variable", "mixto", "monetario"]
+            region = c4.selectbox("Región", region_options,
+                                  index=region_options.index(profile.region) if profile.region in region_options else 0)
+            sector = c5.selectbox("Sector", sector_options,
+                                  index=sector_options.index(profile.sector) if profile.sector in sector_options else 0)
+            asset_class = c6.selectbox("Clase de activo", asset_options,
+                                       index=asset_options.index(getattr(profile, "asset_class", None))
+                                       if getattr(profile, "asset_class", None) in asset_options else 0)
             st.write(f"**Importe detectado:** {profile.amount:,.2f} €" if profile.amount is not None and profile.currency == "EUR" else
                      f"**Importe detectado:** {profile.amount:,.2f}" if profile.amount is not None else "**Importe:** no indicado")
-            st.write(f"**Región solicitada:** {profile.region or 'ninguna'} · **Sector:** {profile.sector or 'ninguno'} · **Exclusiones:** {', '.join(profile.excluded_sectors) or 'ninguna'}")
+            st.write(f"**Exclusiones detectadas:** {', '.join(profile.excluded_sectors) or 'ninguna'}")
             submitted = st.form_submit_button("Obtener propuesta", type="primary")
         if submitted:
             confirmed = Preferences(
                 horizon_years=horizon if isinstance(horizon, int) else None,
                 risk=risk if risk != "Selecciona..." else None,
                 currency=currency if currency != "Selecciona..." else None,
-                amount=profile.amount, region=profile.region, sector=profile.sector,
+                amount=profile.amount,
+                region=region if region != "Sin preferencia" else None,
+                sector=sector if sector != "Sin preferencia" else None,
                 excluded_sectors=profile.excluded_sectors,
+                asset_class=asset_class if asset_class != "Sin preferencia" else None,
             )
             try:
                 results, diagnostics = recommend(funds, confirmed)
@@ -153,8 +167,15 @@ with tab_recommend:
             st.warning(diagnostics["reason"])
         elif not results:
             st.warning("No hay fondos que cumplan estos criterios con datos suficientes. Reduce los filtros o elige otro horizonte; no se inventan exposiciones ni métricas faltantes.")
+            st.caption(f"Tras divisa: {diagnostics['currency']:,}; con métricas recientes: {diagnostics['metrics']:,}; "
+                       f"dentro del límite de riesgo: {diagnostics['risk']:,}; con preferencias verificadas: {diagnostics['profile']:,}.")
         else:
-            st.caption(f"{diagnostics['eligible']} candidatos superaron los filtros del catálogo. Mostramos los {len(results)} mejor puntuados.")
+            eligible = diagnostics["eligible"]
+            st.caption(
+                f"{eligible} {'candidato superó' if eligible == 1 else 'candidatos superaron'} los filtros del catálogo. "
+                + ("Mostramos el mejor puntuado." if len(results) == 1
+                   else f"Mostramos los {len(results)} mejor puntuados.")
+            )
             table = []
             for item in results:
                 ret, vol, sharpe = item.fund.metrics(confirmed.horizon_years)
@@ -193,7 +214,7 @@ with tab_recommend:
 with tab_method:
     st.subheader("Método y procedencia")
     st.write("El catálogo privado se genera a partir del Markdown EODHD. La app no consulta ni publica las claves API ni el dataset completo. El CSV incluido en el repo contiene solo fondos ficticios para una demo inmediata.")
-    st.write("**Orden de decisión:** misma divisa → datos completos y recientes → límite de volatilidad del perfil → región/sector con fuente explícita, si se solicitaron → puntuación por ajuste de riesgo (55 %), Sharpe (25 %) y rentabilidad anual equivalente (20 %).")
+    st.write("**Orden de decisión:** misma divisa → datos completos y recientes → límite de volatilidad del perfil → región, sector o clase de activo con fuente explícita, si se solicitaron → puntuación por ajuste de riesgo (55 %), Sharpe (25 %) y rentabilidad anual equivalente (20 %).")
     st.write("La rentabilidad es acumulada; la volatilidad y Sharpe están anualizados. Un Sharpe vacío no se sustituye por cero. Las cifras históricas no predicen rendimientos futuros.")
     st.write("La voz se transcribe con Whisper local si se instala el complemento; el modelo de lenguaje opcional extrae parámetros estructurados. El motor de ranking es determinista y auditable. La síntesis de voz utiliza el navegador.")
     st.markdown("Consulta el [README del proyecto](https://github.com/NataliaSJO/Taller_B5_T4_Multimodales) para instalar, importar el catálogo y ejecutar la demo.")

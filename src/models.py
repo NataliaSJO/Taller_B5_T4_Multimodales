@@ -10,6 +10,7 @@ class Preferences:
     region: str | None = None
     sector: str | None = None
     excluded_sectors: tuple[str, ...] = ()
+    asset_class: str | None = None
 
 
 @dataclass(frozen=True)
