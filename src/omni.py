@@ -72,7 +72,7 @@ def select(candidates: list[Recommendation], preferences: Preferences, conversat
     """Same task and validation as the specialised filter, answered by the multimodal model."""
     years = preferences.horizon_years
     count = min(ai_filter.requested_count(preferences), len(candidates))
-    fallback = tuple(candidates[:count])
+    fallback = tuple(ai_filter.distinct(candidates, count))
     if len(candidates) <= count:
         return Proposal(fallback, tuple(ai_filter.rule_weights(fallback, preferences)), "Reglas deterministas")
     pool = candidates[:max(CANDIDATES, count + 3)]

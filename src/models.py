@@ -70,6 +70,10 @@ class Recommendation:
     fund: Fund
     score: float
     rationale: str
+    # From the daily price history, when it is available
+    drawdown: float | None = None     # worst fall from a high over the horizon, negative
+    worst_year: float | None = None   # worst twelve months over the horizon
+    group: int | None = None          # funds with the same number move almost together
 
 
 @dataclass(frozen=True)

@@ -172,6 +172,15 @@ class ProposalTests(unittest.TestCase):
         self.assertEqual([item.fund.isin for item in chosen], [self.candidates[1].fund.isin, self.candidates[0].fund.isin])
         self.assertEqual(shares, [0.55, 0.45])
 
+    def test_rules_do_not_pick_two_funds_that_move_together(self):
+        from dataclasses import replace
+        grouped = [replace(self.candidates[0], group=1), replace(self.candidates[1], group=1),
+                   replace(self.candidates[2], group=2), replace(self.candidates[3], group=None)]
+        picked = ai_filter.distinct(grouped, 3)
+        self.assertEqual([item.fund.isin for item in picked],
+                         [self.candidates[0].fund.isin, self.candidates[2].fund.isin, self.candidates[3].fund.isin])
+        self.assertEqual(len(ai_filter.distinct(grouped[:2], 2)), 2)      # completes when groups run out
+
     def test_concentrated_weights_are_replaced(self):
         answer = {"comentario": "", "seleccion": [{"id": 1, "peso": 95}, {"id": 2, "peso": 5}]}
         chosen, shares, _ = ai_filter._validated(answer, self.candidates, self.profile, 5)

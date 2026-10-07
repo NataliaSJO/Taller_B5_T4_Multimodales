@@ -20,3 +20,24 @@ h1, h2, h3 {
 [data-testid="stCaptionContainer"] {
     color: #5b6b76;
 }
+
+/* Los mandos de la conversación (modo y micrófono) se quedan a la vista al pie de la página,
+   por larga que sea la respuesta: no hay que desplazarse para seguir hablando. */
+.st-key-modo,
+.st-key-manos_libres,
+div[data-testid="stElementContainer"]:has(iframe[title*="manos_libres"]),
+div[data-testid="stElementContainer"]:has([data-testid="stAudioInput"]) {
+    position: sticky;
+    z-index: 20;
+    background: #ffffff;
+}
+.st-key-manos_libres,
+div[data-testid="stElementContainer"]:has(iframe[title*="manos_libres"]),
+div[data-testid="stElementContainer"]:has([data-testid="stAudioInput"]) {
+    bottom: 0;
+    padding-bottom: 0.6rem;
+}
+.st-key-modo {
+    bottom: 6.2rem;
+    padding-top: 0.4rem;
+}

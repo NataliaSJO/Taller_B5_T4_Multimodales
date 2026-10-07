@@ -66,7 +66,7 @@ def _returns(isins: list[str], years: int):
     if any(isin not in prices.columns for isin in isins):
         return None, None
     prices = prices[list(isins)].dropna()
-    returns = prices.pct_change().dropna()
+    returns = prices.pct_change(fill_method=None).dropna()
     if len(returns) < MIN_WEEKS:
         return None, None
     return prices, returns
@@ -96,17 +96,17 @@ def analyse(items, weights, years: int) -> Analysis | None:
     if long_prices is None:
         return None
     whole = (long_prices / long_prices.iloc[0]).mul(list(weights), axis=1).sum(axis=1)
-    yearly = whole.pct_change(52).dropna()
+    yearly = whole.pct_change(52, fill_method=None).dropna()
     scenarios = ((float(yearly.min()), float(yearly.median()), float(yearly.max()), len(yearly))
                  if len(yearly) >= MIN_WEEKS else (None, None, None, 0))
     # The evolution and the risk figures refer to the client's horizon (or what there is of it).
     start = long_prices.index[-1] - timedelta(days=round(365.25 * years))
     prices = long_prices[long_prices.index >= start]
-    returns = prices.pct_change().dropna()
+    returns = prices.pct_change(fill_method=None).dropna()
     if len(returns) < MIN_WEEKS:
         return None
     value = (prices / prices.iloc[0]).mul(list(weights), axis=1).sum(axis=1)
-    weekly = value.pct_change().dropna()
+    weekly = value.pct_change(fill_method=None).dropna()
     correlation = returns.corr().to_numpy()
     count = len(isins)
     pairs = [correlation[i][j] for i in range(count) for j in range(i + 1, count)]
@@ -121,6 +121,54 @@ def analyse(items, weights, years: int) -> Analysis | None:
         points=tuple((float(span[index]), float(value.iloc[index])) for index in range(0, len(value), step)),
         worst_year=scenarios[0], median_year=scenarios[1], best_year=scenarios[2], year_windows=scenarios[3],
     )
+
+
+# Largest fall a client of each risk level is assumed to sit through; beyond it the fund loses score.
+TOLERATED_FALL = {"bajo": 0.10, "medio": 0.25, "alto": 0.45}
+SAME_BET = 0.90      # weekly-return correlation above which two candidates count as one idea
+
+
+def inform(candidates: list[Recommendation], preferences) -> list[Recommendation]:
+    """Add to each candidate what its daily history says, and let it count in the ranking.
+
+    Each fund gets its worst fall and worst twelve months over the horizon, and a group number
+    shared by the candidates that move almost together. A fall deeper than the client's risk
+    level tolerates (less if they said they would sell) lowers the score. Candidates without
+    history are left as they were. The result is sorted best first again.
+    """
+    if not available() or not candidates:
+        return candidates
+    years = preferences.horizon_years
+    prices = weekly_prices([item.fund.isin for item in candidates], years)
+    if prices.empty:
+        return candidates
+    returns = prices.pct_change(fill_method=None)
+    correlation = returns.corr(min_periods=MIN_WEEKS)
+    falls = (prices / prices.cummax() - 1).min()
+    worst = prices.pct_change(52, fill_method=None).min() if len(prices) > 52 + MIN_WEEKS else None
+    tolerated = TOLERATED_FALL[preferences.risk] * (0.7 if preferences.loss_reaction == "vende" else 1.0)
+
+    leaders: list[str] = []      # one fund per group, in ranking order
+    informed = []
+    for item in candidates:
+        isin = item.fund.isin
+        if isin not in prices.columns or prices[isin].count() < MIN_WEEKS:
+            informed.append(item)
+            continue
+        group = next((number for number, leader in enumerate(leaders, start=1)
+                      if correlation.at[isin, leader] > SAME_BET), None)
+        if group is None:
+            leaders.append(isin)
+            group = len(leaders)
+        fall = float(falls[isin])
+        year = float(worst[isin]) if worst is not None and worst[isin] == worst[isin] else None
+        excess = max(0.0, abs(fall) - tolerated)
+        note = f" En el periodo, su mayor caída fue del {abs(fall) * 100:.1f} %".replace(".", ",")
+        note += (", más de lo que encaja con tu perfil." if excess > 0 else ".")
+        informed.append(replace(item, score=item.score - 0.5 * excess, rationale=item.rationale + note,
+                                drawdown=fall, worst_year=year, group=group))
+    informed.sort(key=lambda item: (-item.score, item.fund.isin))
+    return informed
 
 
 def _bounded(raw: list[float]) -> list[float] | None:
@@ -168,7 +216,7 @@ def decorrelate(chosen: list[Recommendation], pool: list[Recommendation], years:
     spare = [item for item in pool if item not in chosen][:25]
     isins = [item.fund.isin for item in chosen + spare]
     prices = weekly_prices(isins, years)
-    returns = prices.pct_change()
+    returns = prices.pct_change(fill_method=None)
 
     def similar(first: str, second: str) -> bool:
         if first not in returns.columns or second not in returns.columns:

@@ -68,6 +68,7 @@ if is_demo:
 speak = ui.render_messages()
 
 entry = ui.turn_input(AUDIO_TYPES, speak)
+ui.show_latest(speak)
 if entry:
     started = time.perf_counter()
     text, clips = entry

@@ -168,6 +168,17 @@ def say(text: str, **extra):
     st.session_state.speak = len(st.session_state.messages) - 1
 
 
+def show_latest(speak: int | None):
+    """After a new answer, bring its beginning into view (the controls stay pinned below)."""
+    if speak is None or speak == 0:
+        return
+    components.html(
+        """<script>
+        const messages = window.parent.document.querySelectorAll('[data-testid="stChatMessage"]');
+        if (messages.length) messages[messages.length - 1].scrollIntoView({behavior: "smooth", block: "start"});
+        </script>""", height=0)
+
+
 def unheard():
     """A recording with no speech in it. Hands-free, that is usually a noise: keep listening
     without a word. Otherwise the client pressed the button, so say that nothing was heard."""
@@ -255,6 +266,12 @@ def propose(funds, source: str, select, decide):
             say(f"No encuentro fondos en {profile.currency} con datos suficientes a {profile.horizon_years} años "
                 f"y riesgo {profile.risk}. Dime otra divisa, otro plazo u otro nivel de riesgo y lo vuelvo a intentar.")
         return
+    if state.get("real_data") and history.available():
+        progress.update(label=f"Leyendo el histórico diario de {len(candidates)} candidatos…")
+        try:
+            candidates = history.inform(candidates, profile)
+        except Exception:      # the decision goes on with the catalog figures
+            pass
     progress.update(label=f"Eligiendo entre los {len(candidates)} mejores candidatos…")
     proposal = select(candidates, profile, " ".join(turns))
     progress.update(label="Comprobando la cartera con el histórico diario…")
@@ -354,6 +371,7 @@ def render_messages() -> int | None:
     hands_free = state.get("modo", HANDS) == HANDS  # there the component plays the answer itself
     # One container at a fixed place: what comes after it (the microphone) keeps its position
     # as the conversation grows, so the hands-free component is not restarted on every turn.
+    latest = max((index for index, message in enumerate(state.messages) if message.get("result")), default=None)
     with st.container():
         for index, message in enumerate(state.messages):
             with st.chat_message(message["role"]):
@@ -361,7 +379,11 @@ def render_messages() -> int | None:
                 if message.get("audio"):
                     st.audio(message["audio"], format="audio/wav", autoplay=index == speak and not hands_free)
                 if message.get("result"):
-                    _show_result(message, index)
+                    if index == latest:
+                        _show_result(message, index)
+                    else:
+                        with st.expander("Ver esta propuesta anterior"):
+                            _show_result(message, index)
                 if message.get("seconds") is not None:
                     st.caption(f"⏱ {message['seconds']:.1f} s en responder".replace(".", ","))
     return speak

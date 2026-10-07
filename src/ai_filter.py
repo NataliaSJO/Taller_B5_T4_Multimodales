@@ -97,7 +97,9 @@ def _prompt(candidates: list[Recommendation], preferences: Preferences, conversa
         ret, vol, sharpe = item.fund.metrics(years)
         ratio = "sin dato" if sharpe is None else f"{sharpe:+.2f}"
         official = "".join((f" | riesgo oficial {item.fund.sri}/7" if item.fund.sri else "",
-                            f" | costes {item.fund.costs:.2f}%" if item.fund.costs is not None else ""))
+                            f" | costes {item.fund.costs:.2f}%" if item.fund.costs is not None else "",
+                            f" | caída máxima {item.drawdown:.0%}" if item.drawdown is not None else "",
+                            f" | grupo {item.group}" if item.group is not None else ""))
         lines.append(f"{index}. {item.fund.name} | rentabilidad {metric_years(years)} años {ret:+.1%} | "
                      f"volatilidad {vol:.1%} | Sharpe {ratio}{official}")
     wishes = [f"{name}: {value}" for name, value in (("zona geográfica", preferences.region), ("sector", preferences.sector),
@@ -122,6 +124,10 @@ def _prompt(candidates: list[Recommendation], preferences: Preferences, conversa
         "3. Objetivo del cliente: si quiere crecer, más rentabilidad histórica; si quiere conservar u obtener "
         "rentas, menos volatilidad y mejor Sharpe.\n"
         "4. A igualdad de lo demás, prefiere costes más bajos cuando el dato aparece.\n"
+        + ("5. Histórico diario: los fondos con el mismo número de grupo se mueven casi igual, así que no elijas "
+           "dos del mismo grupo; y evita caídas máximas que este cliente no aguantaría.\n"
+           if any(item.group is not None for item in candidates) else "")
+        +
         f"5. Diversificación: evita repetir la misma gestora o la misma estrategia. "
         f"Asigna entre el {lower_weight:.0%} y el {upper_weight:.0%} a cada fondo.\n\n"
         "Devuelve solo JSON con esta forma exacta: "
@@ -358,6 +364,18 @@ def _validated(answer: dict, candidates: list[Recommendation], preferences: Pref
     return chosen, shares, " ".join(str(answer.get("comentario") or "").split())[:400]
 
 
+def distinct(candidates: list[Recommendation], count: int) -> list[Recommendation]:
+    """The best `count` candidates without two from the same group of funds that move together."""
+    picked, groups = [], set()
+    for item in candidates:
+        if item.group is None or item.group not in groups:
+            picked.append(item)
+            groups.add(item.group)
+        if len(picked) == count:
+            return picked
+    return picked + [item for item in candidates if item not in picked][:count - len(picked)]
+
+
 def rule_weights(items, preferences: Preferences) -> list[float]:
     """Split used when no model proposes one. Inverse volatility favours the calmest fund, which is
     right for preserving capital but wrong for a client who asked to grow it: then the funds that
@@ -382,7 +400,7 @@ def select(candidates: list[Recommendation], preferences: Preferences, conversat
     years = preferences.horizon_years
     name = backend()
     count = min(requested_count(preferences), len(candidates))
-    fallback = tuple(candidates[:count])
+    fallback = tuple(distinct(candidates, count))
     if name == "off" or len(candidates) <= count:
         return Proposal(fallback, tuple(rule_weights(fallback, preferences)), "Reglas deterministas")
     pool = candidates[:max(CANDIDATES[name], count + 3)]
