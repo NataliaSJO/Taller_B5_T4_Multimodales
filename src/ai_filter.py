@@ -236,6 +236,16 @@ def criteria_prompt(preferences: Preferences, conversation: str) -> str:
     )
 
 
+# Words that describe any fund or any client. As a name filter they would discard almost everything.
+GENERIC = frozenset((
+    "fund funds fondo fondos investment investments inversion inversiones invertir growth crecimiento crecer "
+    "diversified diversificado diversificada diversificacion diversification portfolio cartera balanced equilibrado "
+    "return returns rentabilidad risk riesgo capital value valor long term largo plazo medio bajo alto "
+    "conservative conservador moderate moderado aggressive agresivo stable estable preserve preservar "
+    "income ingresos rentas euro euros dolar dolares usd eur acc accumulation"
+).split())
+
+
 def criteria_from(answer: dict, preferences: Preferences) -> Criteria:
     """Validate the model's criteria; out-of-range values fall back to the defaults of the profile."""
     target, ceiling = RISK[preferences.risk]
@@ -251,6 +261,8 @@ def criteria_from(answer: dict, preferences: Preferences) -> Criteria:
     words = []
     for word in answer.get("palabras_clave") or []:
         word = " ".join(normalize(str(word)).split())
+        if set(word.split()) <= GENERIC:
+            continue        # says nothing about a theme: it would only empty the search
         if 3 <= len(word) <= 30 and word.replace(" ", "").isalnum() and word not in words:
             words.append(word)
     return Criteria(
@@ -346,6 +358,25 @@ def _validated(answer: dict, candidates: list[Recommendation], preferences: Pref
     return chosen, shares, " ".join(str(answer.get("comentario") or "").split())[:400]
 
 
+def rule_weights(items, preferences: Preferences) -> list[float]:
+    """Split used when no model proposes one. Inverse volatility favours the calmest fund, which is
+    right for preserving capital but wrong for a client who asked to grow it: then the funds that
+    fit the profile best weigh more. Both respect the shared limits."""
+    if preferences.objective != "crecimiento" or len(items) < 2:
+        return allocate(items, preferences.horizon_years)
+    lower, upper = allocation_limits(len(items))
+    raw = [max(item.score, 0.01) for item in items]
+    low, high = 0.0, 1.0 / min(raw)
+    for _ in range(80):
+        scale = (low + high) / 2
+        if sum(min(upper, max(lower, scale * value)) for value in raw) < 1:
+            low = scale
+        else:
+            high = scale
+    weights = [min(upper, max(lower, high * value)) for value in raw]
+    return weights if valid_allocation(weights, len(items)) else allocate(items, preferences.horizon_years)
+
+
 def select(candidates: list[Recommendation], preferences: Preferences, conversation: str) -> Proposal:
     """Choose and weight the funds of the proposal. `candidates` must be sorted best first."""
     years = preferences.horizon_years
@@ -353,7 +384,7 @@ def select(candidates: list[Recommendation], preferences: Preferences, conversat
     count = min(requested_count(preferences), len(candidates))
     fallback = tuple(candidates[:count])
     if name == "off" or len(candidates) <= count:
-        return Proposal(fallback, tuple(allocate(fallback, years)), "Reglas deterministas")
+        return Proposal(fallback, tuple(rule_weights(fallback, preferences)), "Reglas deterministas")
     pool = candidates[:max(CANDIDATES[name], count + 3)]
     try:
         prompt = _prompt(pool, preferences, conversation, count)
@@ -361,6 +392,6 @@ def select(candidates: list[Recommendation], preferences: Preferences, conversat
                   else ASK[name](prompt, _schema(count)))
         chosen, shares, comment = _validated(normalise(answer), pool, preferences, count)
     except Exception as exc:  # any model failure must not block the proposal
-        return Proposal(fallback, tuple(allocate(fallback, years)),
+        return Proposal(fallback, tuple(rule_weights(fallback, preferences)),
                         f"Reglas deterministas ({label(name)} no disponible: {type(exc).__name__})")
     return Proposal(tuple(chosen), tuple(shares), f"{label(name)} + validación local", comment)

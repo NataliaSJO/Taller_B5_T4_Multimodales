@@ -3,7 +3,7 @@
 Sin argumentos: Whisper base (voz a texto), una voz Piper en castellano (texto a voz) y
 Gemma 3 1B cuantizado (filtro en CPU). Alrededor de 1 GB.
 
-    --gpu    añade Gemma 3 4B (8 GB) para el filtro en GPU
+    --gpu    añade Gemma 3 4B (8 GB) para el filtro en GPU y Whisper large-v3-turbo (1,6 GB)
     --omni   añade Gemma 3n E2B (11 GB) para la versión de modelo único
 
 Gemma se distribuye bajo los términos de uso de Google.
@@ -18,7 +18,7 @@ from faster_whisper import download_model
 from huggingface_hub import hf_hub_download, snapshot_download
 
 from src.paths import (GPU_LLM_PATH, GPU_LLM_REPO, LLM_FILE, LLM_PATH, LLM_REPO, MODELS, OMNI_PATH, OMNI_REPO,
-                       PIPER_FILE, PIPER_REPO, WHISPER_DIR, WHISPER_SIZE)
+                       PIPER_FILE, PIPER_REPO, WHISPER_DIR, WHISPER_GPU_DIR, WHISPER_GPU_SIZE, WHISPER_SIZE)
 
 WEIGHTS = ["*.safetensors", "*.json", "*.model", "*.txt", "*.jinja"]
 
@@ -32,6 +32,8 @@ def main() -> None:
     print(f"Gemma {LLM_FILE}")
     hf_hub_download(LLM_REPO, LLM_FILE, local_dir=LLM_PATH.parent)
     if "--gpu" in sys.argv:
+        print(f"Whisper {WHISPER_GPU_SIZE} -> {WHISPER_GPU_DIR}")
+        download_model(WHISPER_GPU_SIZE, output_dir=str(WHISPER_GPU_DIR))
         print(f"Gemma 3 4B -> {GPU_LLM_PATH}")
         snapshot_download(GPU_LLM_REPO, local_dir=GPU_LLM_PATH, allow_patterns=WEIGHTS)
     if "--omni" in sys.argv:

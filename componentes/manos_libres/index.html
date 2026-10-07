@@ -36,6 +36,7 @@ const barra = document.querySelector("#nivel span");
 let activo = false;            // el usuario ha pulsado «Empezar»
 let fase = "parado";           // parado | hablando | escuchando | pensando
 let ultimoId = null;           // último turno del asesor ya atendido
+let ultimaReanudacion = null;  // contador de «no era voz»: seguir escuchando sin decir nada
 let pendiente = "";            // audio del asesor aún no reproducido
 let audio = null, flujo = null, contexto = null, grabadora = null, bucle = null, espera = null;
 
@@ -115,10 +116,10 @@ async function escuchar() {
     // Ruido de fondo = el nivel más bajo oído, con una deriva lenta al alza. Así no se
     // confunde con la voz aunque la persona empiece a hablar de inmediato.
     suelo = suelo === null ? nivel : Math.min(suelo * 1.002 + 0.00002, nivel);
-    const umbral = Math.min(0.06, Math.max(0.012, suelo * 4));
+    const umbral = Math.min(0.06, Math.max(0.02, suelo * 4));
     if (nivel > umbral) {
       if (!vozDesde) vozDesde = ahora;
-      if (ahora - vozDesde > 120) hayVoz = true;
+      if (ahora - vozDesde > 250) hayVoz = true;   // un golpe o un clic no es una frase
       ultimaVoz = ahora;
     } else {
       vozDesde = 0;
@@ -149,6 +150,15 @@ boton.onclick = () => {
 window.addEventListener("message", evento => {
   if (evento.data.type !== "streamlit:render") return;
   const args = evento.data.args || {};
+  if (args.resume !== ultimaReanudacion) {       // lo enviado no era voz: volver a escuchar
+    const primera = ultimaReanudacion === null;
+    ultimaReanudacion = args.resume;
+    if (!primera && activo && fase === "pensando" && args.play_id === ultimoId) {
+      clearTimeout(espera);
+      escuchar();
+      return;
+    }
+  }
   if (args.play_id === ultimoId) return;         // el mismo turno: nada nuevo que decir
   ultimoId = args.play_id;
   clearTimeout(espera);

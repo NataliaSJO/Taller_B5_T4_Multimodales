@@ -1,13 +1,14 @@
 """Local Whisper transcription; no audio is uploaded to a server."""
 
 import io
+import os
 import re
 import tempfile
 import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
-from .paths import WHISPER_DIR, WHISPER_SIZE
+from .paths import WHISPER_DIR, WHISPER_GPU_DIR, WHISPER_GPU_SIZE, WHISPER_SIZE
 
 # Formats the page accepts; recordings from the browser arrive as WAV.
 AUDIO_TYPES = ["wav", "mp3", "m4a", "ogg", "opus", "flac", "aac", "webm", "mp4"]
@@ -36,9 +37,35 @@ def spoken(segments) -> str:
     return " ".join(kept).strip()
 
 
+def _gpu_ready() -> bool:
+    """The larger Whisper is downloaded and PyTorch's CUDA libraries can be lent to it."""
+    if not (WHISPER_GPU_DIR / "model.bin").is_file():
+        return False
+    try:
+        import torch
+    except ImportError:
+        return False
+    if not torch.cuda.is_available():
+        return False
+    libraries = Path(torch.__file__).parent / "lib"
+    if os.name == "nt" and libraries.is_dir():      # cuDNN and cuBLAS ship inside PyTorch
+        os.add_dll_directory(str(libraries))
+        os.environ["PATH"] = str(libraries) + os.pathsep + os.environ.get("PATH", "")
+    return True
+
+
+def label() -> str:
+    return f"Whisper {WHISPER_GPU_SIZE} en GPU" if _gpu_ready() else f"Whisper {WHISPER_SIZE} en CPU"
+
+
 @lru_cache(maxsize=1)
 def _model():
     from faster_whisper import WhisperModel
+    if _gpu_ready():
+        try:
+            return WhisperModel(str(WHISPER_GPU_DIR), device="cuda", compute_type="float16")
+        except Exception:
+            pass    # no usable CUDA runtime for it: the CPU model below still works
     source = str(WHISPER_DIR) if (WHISPER_DIR / "model.bin").is_file() else WHISPER_SIZE
     return WhisperModel(source, device="cpu", compute_type="int8")
 

@@ -39,6 +39,8 @@ flowchart TD
 
 La versión alternativa sustituye Whisper, las reglas, las preguntas y Gemma 3 4B por un único Gemma 3n. Ver la comparación en el README.
 
+La presentación de cinco diapositivas está en `docs/pitch_fondoclaro_v3.pptx`; el esquema del problema, la viabilidad, la normativa y la monetización, en el README.
+
 **Siguiente iteración:** composición y costes reales desde folletos y KID, mínimos de suscripción, correlaciones para optimizar el reparto, evaluación con peticiones etiquetadas, revisión legal de idoneidad.
 
 **Economía:** sin coste de API. La instalación básica corre en CPU; el filtro con Gemma 3 4B y la versión de modelo único necesitan GPU. Claude por API está preparado como alternativa de pago y deshabilitado.

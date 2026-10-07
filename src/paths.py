@@ -13,6 +13,9 @@ BROCHURES = ROOT / "data/private/folletos.csv"
 # Voz -> texto
 WHISPER_SIZE = os.getenv("WHISPER_MODEL", "small")
 WHISPER_DIR = MODELS / "whisper" / WHISPER_SIZE
+# Con GPU se usa un Whisper mayor: transcribe mucho mejor la voz real y tarda décimas de segundo
+WHISPER_GPU_SIZE = "large-v3-turbo"
+WHISPER_GPU_DIR = MODELS / "whisper" / WHISPER_GPU_SIZE
 
 # Texto -> voz
 PIPER_REPO = "rhasspy/piper-voices"

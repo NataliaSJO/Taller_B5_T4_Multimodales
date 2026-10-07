@@ -144,7 +144,8 @@ def turn_input(file_types: list[str], speak: int | None) -> tuple[str, list] | N
     if mode == HANDS:
         reply = state.messages[speak].get("audio") if speak is not None else None
         heard = _hands_free(play=base64.b64encode(reply).decode() if reply else "",
-                            play_id=len(state.messages), key="manos_libres", default=None)
+                            play_id=len(state.messages), resume=state.get("resume", 0),
+                            key="manos_libres", default=None)
         if heard and heard["id"] != state.get("heard"):
             state.heard = heard["id"]
             suffix = ".ogg" if "ogg" in heard["mime"] else ".mp4" if "mp4" in heard["mime"] else ".webm"
@@ -165,6 +166,16 @@ def say(text: str, **extra):
     """Add an assistant turn; it is spoken aloud the next time the page is drawn."""
     st.session_state.messages.append({"role": "assistant", "text": text, "audio": _voice(text), **extra})
     st.session_state.speak = len(st.session_state.messages) - 1
+
+
+def unheard():
+    """A recording with no speech in it. Hands-free, that is usually a noise: keep listening
+    without a word. Otherwise the client pressed the button, so say that nothing was heard."""
+    state = st.session_state
+    if state.get("modo", HANDS) == HANDS:
+        state.resume = state.get("resume", 0) + 1
+    else:
+        say("No te he oído bien. ¿Puedes repetirlo?")
 
 
 def user_turns() -> list[str]:

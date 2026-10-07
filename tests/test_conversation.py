@@ -102,6 +102,24 @@ class CriteriaTests(unittest.TestCase):
         floor, _ = recommend(funds, alto, limit=40, criteria=Criteria((0.4, 0.3, 0.3), 0.30, min_annual_return=0.10))
         self.assertTrue(all((1 + item.fund.return_5y) ** 0.2 - 1 >= 0.10 for item in floor))
 
+    def test_generic_words_are_not_a_theme(self):
+        criteria = ai_filter.criteria_from({
+            "peso_riesgo": 60, "peso_sharpe": 30, "peso_rentabilidad": 10, "volatilidad_objetivo": 15,
+            "rentabilidad_minima_anual": None, "palabras_clave": ["diversified", "growth", "investment", "oro", "long term"]},
+            self.profile)
+        self.assertEqual(criteria.keywords, ("oro",))
+
+    def test_growth_objective_weights_by_fit_not_by_calm(self):
+        funds = load_catalog(ROOT / "data/demo_funds.csv")
+        growth = Preferences(5, "medio", "EUR", objective="crecimiento")
+        items, _ = recommend(funds, growth, limit=40)
+        weights = ai_filter.rule_weights(items[:4], growth)
+        self.assertAlmostEqual(sum(weights), 1.0)
+        self.assertEqual(weights.index(max(weights)), 0)                       # best fit first
+        calm = ai_filter.rule_weights(items[:4], Preferences(5, "medio", "EUR"))
+        calmest = min(range(4), key=lambda i: items[i].fund.vol_5y)
+        self.assertEqual(calm.index(max(calm)), calmest)                       # without that objective, the calmest
+
     def test_no_criteria_without_a_capable_model(self):
         with patch.dict(os.environ, {"AI_FILTER": "off"}):
             self.assertIsNone(ai_filter.decide(self.profile, "texto"))

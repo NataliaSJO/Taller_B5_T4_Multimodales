@@ -51,6 +51,7 @@ with st.sidebar:
              help="Las reglas son instantáneas. El modelo entiende frases más libres, tarda unos segundos "
                   "y puede equivocarse; las reglas tienen la última palabra donde ambos encuentran un dato.")
     st.write(f"**Datos:** {source}")
+    st.write(f"**Voz a texto:** {audio.label()}")
     st.write(f"**Voz de respuesta:** {tts.label()}")
     if st.button("Nueva conversación"):
         ui.new_conversation(GREETING)
@@ -81,10 +82,11 @@ if entry:
         try:
             if text:
                 handle(text, funds, source)
-            else:  # said aloud so that a hands-free conversation keeps going
-                ui.say("No te he oído bien. ¿Puedes repetirlo?")
+            else:
+                ui.unheard()
         except Exception as exc:   # nothing may leave the conversation without an answer
             ui.say(f"He tenido un problema al preparar la respuesta ({type(exc).__name__}). "
                    "Lo que me has dicho está guardado; puedes repetirlo o corregir el perfil en el panel lateral.")
-    state.messages[-1]["seconds"] = time.perf_counter() - started
+    if text:
+        state.messages[-1]["seconds"] = time.perf_counter() - started
     st.rerun()

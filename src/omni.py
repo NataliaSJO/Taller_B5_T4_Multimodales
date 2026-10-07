@@ -74,13 +74,13 @@ def select(candidates: list[Recommendation], preferences: Preferences, conversat
     count = min(ai_filter.requested_count(preferences), len(candidates))
     fallback = tuple(candidates[:count])
     if len(candidates) <= count:
-        return Proposal(fallback, tuple(allocate(fallback, years)), "Reglas deterministas")
+        return Proposal(fallback, tuple(ai_filter.rule_weights(fallback, preferences)), "Reglas deterministas")
     pool = candidates[:max(CANDIDATES, count + 3)]
     try:
         prompt = ai_filter._prompt(pool, preferences, conversation, count)
         answer = parse_json(generate(OMNI_PATH, [{"type": "text", "text": prompt}], 300))
         chosen, shares, comment = ai_filter._validated(ai_filter.normalise(answer), pool, preferences, count)
     except Exception as exc:  # any model failure must not block the proposal
-        return Proposal(fallback, tuple(allocate(fallback, years)),
+        return Proposal(fallback, tuple(ai_filter.rule_weights(fallback, preferences)),
                         f"Reglas deterministas ({LABEL} no disponible: {type(exc).__name__})")
     return Proposal(tuple(chosen), tuple(shares), f"{LABEL} + validación local", comment)

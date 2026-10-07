@@ -6,7 +6,7 @@ import sys
 import streamlit as st
 
 from src import ai_filter, hf_model, history, omni, semantic, tts
-from src.paths import BROCHURES, GPU_LLM_PATH, LLM_PATH, OMNI_PATH, PIPER_VOICE, PRIVATE_CATALOG, ROOT, WHISPER_DIR
+from src.paths import BROCHURES, GPU_LLM_PATH, LLM_PATH, OMNI_PATH, PIPER_VOICE, PRIVATE_CATALOG, ROOT, WHISPER_DIR, WHISPER_GPU_DIR
 
 st.title("Pruebas y estado")
 
@@ -17,6 +17,7 @@ checks = [
     ("Histórico diario de precios (Parquet)", history.available(), "fondos_diarios.parquet junto al proyecto o en ..\\datos"),
     ("Búsqueda semántica en folletos", semantic.available(), "procesar los folletos con fastembed instalado"),
     ("Whisper (voz a texto)", (WHISPER_DIR / "model.bin").is_file(), "instalar.bat"),
+    ("Whisper large-v3-turbo (voz a texto en GPU)", (WHISPER_GPU_DIR / "model.bin").is_file(), "instalar_parte2_opcional.bat"),
     ("Piper (voz local)", PIPER_VOICE.is_file(), "instalar.bat"),
     ("Voz neuronal en línea", tts.label().startswith("neuronal"), "pip install edge-tts; necesita internet"),
     ("Gemma 3 1B (filtro en CPU)", LLM_PATH.is_file(), "instalar.bat"),
