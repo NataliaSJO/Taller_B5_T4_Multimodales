@@ -1,0 +1,11 @@
+isin,name,currency,provider_type,strategy,assets,regions,sectors,source_url,last_date,return_1y,vol_1y,sharpe_1y,return_3y,vol_3y,sharpe_3y,return_5y,vol_5y,sharpe_5y
+DEMO000001,Fondo Demo Bonos Euro,EUR,DEMO,Bonos soberanos de corta duración,Renta fija,Europa,Bonos soberanos,synthetic,2026-10-05,0.031,0.035,0.38,0.105,0.042,0.42,0.134,0.049,0.24
+DEMO000002,Fondo Demo Mixto Global,EUR,DEMO,Mixto global,Renta variable y renta fija,Global,Industria; salud; tecnología,synthetic,2026-10-05,0.079,0.116,0.48,0.233,0.128,0.51,0.391,0.142,0.50
+DEMO000003,Fondo Demo Acciones Europa,EUR,DEMO,Renta variable europea,Renta variable,Europa,Industria; finanzas; salud,synthetic,2026-10-05,0.113,0.181,0.56,0.354,0.190,0.61,0.682,0.215,0.59
+DEMO000004,Fondo Demo Tecnología Mundial,EUR,DEMO,Renta variable tecnológica global,Renta variable,Global,Tecnología,synthetic,2026-10-05,0.176,0.320,0.60,0.582,0.305,0.72,1.180,0.345,0.70
+DEMO000005,Fondo Demo Salud Global,EUR,DEMO,Renta variable global del sector salud,Renta variable,Global,Salud; sanidad,synthetic,2026-10-05,0.092,0.153,0.47,0.247,0.164,0.55,0.486,0.186,0.52
+DEMO000006,Fondo Demo Monetario Euro,EUR,DEMO,Mercado monetario euro,Monetario,Europa,Depósitos; letras,synthetic,2026-10-05,0.021,0.007,0.12,0.076,0.011,0.15,0.095,0.014,0.08
+DEMO000007,Fondo Demo Bonos USD,USD,DEMO,Bonos de corta duración,Renta fija,Estados Unidos,Bonos soberanos,synthetic,2026-10-05,0.038,0.044,0.25,0.139,0.052,0.35,0.210,0.060,0.41
+DEMO000008,Fondo Demo Acciones EEUU,USD,DEMO,Renta variable de Estados Unidos,Renta variable,Estados Unidos,Tecnología; finanzas; salud,synthetic,2026-10-05,0.141,0.205,0.61,0.499,0.221,0.72,0.811,0.244,0.69
+DEMO000009,Fondo Demo Mixto GBP,GBP,DEMO,Mixto global en libras,Renta variable y renta fija,Global,Industria; finanzas,synthetic,2026-10-05,0.067,0.099,0.34,0.204,0.118,0.40,0.348,0.137,0.37
+DEMO000010,Fondo Demo Global CHF,CHF,DEMO,Renta variable global en francos,Renta variable,Global,Industria; salud,synthetic,2026-10-05,0.083,0.142,,0.298,0.157,,0.521,0.173,

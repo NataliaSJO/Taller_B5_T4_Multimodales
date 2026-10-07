@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# FondoClaro local artifacts and licensed data
+.DS_Store
+.build/
+data/private/
+models/

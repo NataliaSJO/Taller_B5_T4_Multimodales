@@ -1,0 +1,10 @@
+jupyterlab
+ipykernel
+ipython
+torch
+transformers
+accelerate
+safetensors
+numpy
+scipy
+sounddevice
