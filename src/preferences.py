@@ -93,13 +93,17 @@ def parse_heuristic(text: str) -> Preferences:
 
 def parse_with_optional_llm(text: str, use_llm: bool = False) -> tuple[Preferences, str]:
     base = parse_heuristic(text)
-    if not use_llm or not os.getenv("OPENAI_API_KEY"):
+    router_key = os.getenv("OPENROUTER_API_KEY")
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not use_llm or not (router_key or openai_key):
         return base, "Reglas locales"
     try:
         from openai import OpenAI
-        from pydantic import BaseModel
+        from pydantic import BaseModel, ConfigDict
 
         class Extracted(BaseModel):
+            model_config = ConfigDict(extra="forbid")
+
             horizon_years: int | None
             risk: str | None
             currency: str | None
@@ -109,16 +113,37 @@ def parse_with_optional_llm(text: str, use_llm: bool = False) -> tuple[Preferenc
             excluded_sectors: list[str]
             asset_class: str | None
 
-        client = OpenAI(timeout=20.0, max_retries=1)
-        response = client.responses.parse(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-            input=[
-                {"role": "system", "content": "Extrae únicamente preferencias explícitas del texto en español. No infieras edad, ingresos, situación patrimonial ni tolerancia al riesgo. Usa null si falta un dato. Riesgo: bajo, medio o alto. Moneda ISO. Clase de activo: renta fija, renta variable, mixto o monetario. No recomiendes productos."},
-                {"role": "user", "content": text[:4000]},
-            ],
-            text_format=Extracted,
-        )
-        parsed = response.output_parsed
+        messages = [
+            {"role": "system", "content": "Extrae únicamente preferencias explícitas del texto en español. No infieras edad, ingresos, situación patrimonial ni tolerancia al riesgo. Usa null si falta un dato. Riesgo: bajo, medio o alto. Moneda ISO. Clase de activo: renta fija, renta variable, mixto o monetario. No recomiendes productos."},
+            {"role": "user", "content": text[:4000]},
+        ]
+        if router_key:
+            model = os.getenv("OPENROUTER_MODEL", "openai/gpt-6-luna")
+            client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=router_key,
+                            timeout=20.0, max_retries=1)
+            extra_body = {"provider": {"require_parameters": True}}
+            if model.startswith("openai/gpt-6-luna"):
+                extra_body["reasoning"] = {"effort": "none"}
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                response_format={"type": "json_schema", "json_schema": {
+                    "name": "fund_preferences", "strict": True,
+                    "schema": Extracted.model_json_schema(),
+                }},
+                extra_body=extra_body,
+            )
+            parsed = Extracted.model_validate_json(response.choices[0].message.content)
+            method = f"OpenRouter ({model}) + validación local"
+        else:
+            client = OpenAI(api_key=openai_key, timeout=20.0, max_retries=1)
+            response = client.responses.parse(
+                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                input=messages,
+                text_format=Extracted,
+            )
+            parsed = response.output_parsed
+            method = "OpenAI + validación local"
         if parsed is None:
             return base, "Reglas locales (respuesta del modelo no utilizable)"
         risk = parsed.risk if parsed.risk in ("bajo", "medio", "alto") else None
@@ -135,6 +160,7 @@ def parse_with_optional_llm(text: str, use_llm: bool = False) -> tuple[Preferenc
             excluded_sectors=tuple(parsed.excluded_sectors or base.excluded_sectors),
             asset_class=parsed.asset_class if parsed.asset_class in ASSET_CLASSES else base.asset_class,
         )
-        return extracted, "Modelo de lenguaje + validación local"
+        return extracted, method
     except Exception:
-        return base, "Reglas locales (modelo no disponible)"
+        provider = "OpenRouter" if router_key else "OpenAI"
+        return base, f"Reglas locales ({provider} no disponible)"

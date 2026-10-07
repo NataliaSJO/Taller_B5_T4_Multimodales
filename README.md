@@ -76,11 +76,12 @@ Graba en el navegador o sube un WAV/MP3/M4A de hasta 25 MiB. La transcripción s
 
 ```bash
 python -m pip install -r requirements-ai.txt
-export OPENAI_API_KEY='tu_clave_local'
 streamlit run app.py
 ```
 
-Activa la casilla de la interfaz. `gpt-4o-mini` extrae preferencias con salida estructurada y validación local; el modelo **no escoge los fondos**. Si falla o no hay clave, se utilizan reglas locales. La clave se lee del entorno y nunca se escribe en el repositorio. Puedes cambiar el modelo con `OPENAI_MODEL`, siempre que admita Structured Outputs. La API no se ha usado para generar los datos de la demo.
+Para usar OpenRouter, copia `.env.example` a `.env` y rellena `OPENROUTER_API_KEY` en ese archivo local. El modelo inicial es `openai/gpt-6-luna`; puedes cambiarlo con `OPENROUTER_MODEL` por otro que admita salida estructurada. **`.env` está ignorado por Git y nunca se debe subir ni pegar su clave en un mensaje.** Reinicia Streamlit tras añadir la clave y activa la casilla *Interpretar con modelo de lenguaje*.
+
+La app también acepta `OPENAI_API_KEY` y `OPENAI_MODEL` como variables de entorno para usar directamente la API de OpenAI. Si existen ambas claves, se prioriza OpenRouter. El modelo solo extrae preferencias con salida estructurada y validación local; **no escoge los fondos**. Si falla o no hay clave, se utilizan reglas locales. Cuando se activa, se envía el texto de la petición al proveedor elegido, nunca el catálogo. La API no se ha usado para generar los datos de la demo.
 
 ## Decisión explicable
 
@@ -108,6 +109,7 @@ src/                           Extracción, catálogo, ranking y voz
 scripts/import_catalog.py      Conversión privada del Markdown EODHD
 data/demo_funds.csv            Ejemplo sintético integrado
 data/private/                  Catálogo real local, ignorado por Git
+.env.example                  Plantilla de clave y modelo OpenRouter
 tests/                         Pruebas de extracción, importación y ranking
 docs/pitch.md                  Propuesta de valor y demo
 docs/pitch_fondoclaro_v2.pptx  Presentación técnica de 5 diapositivas

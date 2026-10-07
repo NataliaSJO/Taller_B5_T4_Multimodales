@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
 from streamlit.components.v1 import html
 
 from src.audio import transcribe_audio
@@ -15,6 +16,7 @@ from src.preferences import parse_with_optional_llm
 from src.recommender import recommend
 
 ROOT = Path(__file__).resolve().parent
+load_dotenv(ROOT / ".env", override=False)
 PRIVATE = ROOT / "data/private/funds.csv"
 DEMO = ROOT / "data/demo_funds.csv"
 
@@ -100,9 +102,9 @@ with tab_recommend:
                     st.rerun()
             except (ValueError, RuntimeError, OSError) as exc:
                 st.error(str(exc))
-    llm_available = bool(os.getenv("OPENAI_API_KEY"))
+    llm_available = bool(os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY"))
     use_llm = st.checkbox("Interpretar con modelo de lenguaje (opcional)", disabled=not llm_available,
-                          help="Requiere OPENAI_API_KEY y requirements-ai.txt. Sin clave se usan reglas locales.")
+                          help="Requiere OPENROUTER_API_KEY u OPENAI_API_KEY y requirements-ai.txt. Envía solo el texto de tu petición al proveedor elegido; el catálogo permanece local. Sin clave se usan reglas locales.")
     if st.button("Interpretar petición", type="primary"):
         text = st.session_state.request_text.strip()
         if not text:
