@@ -8,6 +8,8 @@ Los modelos abiertos se descargan de Hugging Face y se ejecutan en local; el rec
 
 > Demostración educativa. No es asesoramiento de inversión, no sustituye un test de idoneidad y no verifica comisiones ni mínimos de suscripción. Las rentabilidades pasadas no garantizan rentabilidades futuras.
 
+**Vídeos de demostración** (conversaciones reales por voz hasta la propuesta; GitHub no los reproduce en línea, hay que descargarlos): [Video_ejemplo_Fondoclaro.mp4](ejemplos_video/Video_ejemplo_Fondoclaro.mp4) (70 MB) y [Video_ejemplo2.mp4](ejemplos_video/Video_ejemplo2.mp4) (81 MB).
+
 ![Conversación manos libres: la página saluda y espera a que hables](docs/images/conversacion.png)
 
 ![Propuesta con reparto, informe PDF y audio resumen](docs/images/propuesta.png)
@@ -497,6 +499,7 @@ src/money.py               Importes en español y reparto al céntimo
 data/demo_funds.csv        Catálogo sintético
 data/private/, models/     Catálogo real y modelos, ignorados por Git
 tests/                     Pruebas (python -m unittest discover -s tests)
+ejemplos_video/            Vídeos de demostración
 docs/                      Pitch (pitch.md y pitch_fondoclaro_v3.pptx) y capturas
 requirements.txt           Dependencias de la instalación básica
 requirements-gpu.txt       Dependencias de los modelos de GPU
