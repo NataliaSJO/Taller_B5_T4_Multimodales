@@ -1,8 +1,10 @@
 # FondoClaro · asesor de fondos por voz (MVP)
 
+**Equipo:** Josep Perez Segura, Emilio Sánchez Martínes y Natalia San José Ortega.
+
 MVP del Taller B5-T4. El usuario **habla** con la página sobre lo que quiere invertir y la página le **responde con voz**. Si falta algún dato obligatorio, se lo pregunta. Al terminar entrega un **informe PDF** con la cartera de fondos propuesta y un **audio** que resume en qué le recomienda invertir. También se puede escribir en lugar de hablar.
 
-Los modelos se descargan de Hugging Face y se ejecutan en local; no hace falta ninguna clave. La única parte que sale del equipo es la voz neuronal de las respuestas, que se puede desactivar (ver «Voz»).
+Los modelos abiertos se descargan de Hugging Face y se ejecutan en local; el recorrido básico no necesita claves de API. Por defecto, la voz de respuesta envía texto a un servicio externo; si se activa Claude, también salen la conversación y los candidatos. Para una demostración con inferencia local, usar `VOICE=local`, un selector local o reglas y `ADVISOR_WEB=off`, después de descargar los modelos.
 
 > Demostración educativa. No es asesoramiento de inversión, no sustituye un test de idoneidad y no verifica comisiones ni mínimos de suscripción. Las rentabilidades pasadas no garantizan rentabilidades futuras.
 
@@ -11,6 +13,25 @@ Los modelos se descargan de Hugging Face y se ejecutan en local; no hace falta n
 ![Propuesta con reparto, informe PDF y audio resumen](docs/images/propuesta.png)
 
 Las capturas están hechas con el catálogo sintético de demostración (`CATALOG=demo`): los fondos y sus cifras son ficticios.
+
+## Correspondencia con el enunciado y entregables
+
+Referencia: [enunciado del Taller B5-T4](Taller_B5_T4.pdf). La práctica pide un MVP FinTech interactivo, da más valor a la orquestación de modelos especializados y exige documentación y una demostración funcional. Las modalidades de su apartado 3 son ejemplos; no se presentan aquí como capacidades implementadas si no lo están.
+
+| Requisito | Dónde se documenta o demuestra | Alcance y estado |
+| --- | --- | --- |
+| 4.1. Problema, público y propuesta de valor | [Idea y propuesta de valor](#el-problema-para-quién-y-por-qué-multimodal) y esquema Mermaid | Propuesta B2B2C; hipótesis de mercado pendiente de validar con asesores. |
+| 4.1. Viabilidad técnica y económica | [Viabilidad](#viabilidad) | Costes, latencia, privacidad, marco financiero y monetización; se distinguen estimaciones de resultados comprobados. |
+| 4.2. Diversidad de modalidades | [Entradas, modelos y salidas](#entradas-modelos-y-salidas) | Voz, texto y salidas de audio y PDF; documentos e históricos opcionales. Imagen disponible en Modelo único, sin evaluación real documentada. |
+| 4.2. Orquestación de modelos | Diagramas de ambas versiones y [arquitectura por capas](#arquitectura-por-capas) | Especialistas es la versión principal para mostrar el encadenamiento; Modelo único es una comparación experimental. |
+| 4.3. MVP, UI, UX y robustez | [Interfaz](#qué-hay-en-la-página), capturas y [validación](#validación-y-resultados) | Conversación, corrección de perfil, navegación, errores y respaldos. Las pruebas automáticas no sustituyen la prueba de voz real. |
+| 4.3. Arranque directo y dependencias | [Arranque](#arranque-tras-clonar-windows), `instalar.bat`, `iniciar.bat` y `requirements*.txt` | Recorrido básico con datos sintéticos; instalación de GPU y datos privados opcional. |
+| 4.4. README, capturas, diagramas y pitch técnico | Este README y [pitch de cinco diapositivas](docs/pitch_fondoclaro_v3.pptx) | Archivos incluidos en el repositorio. |
+| 4.4. Modularidad | [Arquitectura por capas](#arquitectura-por-capas) y [estructura](#estructura) | Separación de interfaz, negocio, datos y acceso a modelos. |
+| 5.1. Repositorio del MVP | [Repositorio en GitHub](https://github.com/NataliaSJO/Taller_B5_T4_Multimodales) | Código y datos sintéticos incluidos; datos privados y pesos de modelos no se distribuyen. |
+| 5.2. Demostración funcional | [Guion de demostración](#demostración-funcional-para-la-entrega) | Modalidad prevista: demo interactiva local. No se aporta aquí una URL pública ni una grabación; debe ejecutarse ante el evaluador o adjuntarse un vídeo. |
+
+**Entrega académica:** grupo de tres estudiantes; entrega mediante el aula virtual el **8 de octubre de 2026 a las 18:00**, según el enunciado. Antes de entregar, comprobar que el enlace del aula apunta a la versión que se va a demostrar.
 
 ## El problema, para quién y por qué multimodal
 
@@ -39,9 +60,11 @@ flowchart LR
 
 ## Viabilidad
 
-**Coste de inferencia.** Todos los modelos corren en local, así que no hay coste por petición: el coste es el equipo (una GPU de 12 GB para la versión completa) y la electricidad. Como referencia para un despliegue por API, la propuesta consume unos 6.600 tokens de entrada y 300 de salida (medido: lista de 150 candidatos más criterios). A precios de lista de Anthropic consultados el 25/09/2026, eso son unos 0,03 USD por propuesta con Claude Opus 5.5 y menos de 0,01 USD con Claude Haiku 4.5. No hemos comprobado precios de transcripción ni de voz de otros proveedores.
+**Coste de inferencia y APIs.** Con modelos locales y `VOICE=local` no hay facturación de un proveedor por llamada, pero sí consumo eléctrico, amortización del equipo, mantenimiento y licencias de datos. La voz en línea depende de un servicio externo no oficial: no se asume disponibilidad garantizada ni un contrato de servicio. Claude es opcional y se factura aparte; no se ha validado aquí su tarifa ni la disponibilidad del identificador de modelo configurado.
 
-**Latencia medida** (RTX 5080, modelos ya cargados):
+Para presupuestar una API: `coste = tokens_entrada / 1.000.000 × tarifa_entrada + tokens_salida / 1.000.000 × tarifa_salida`, sumando **todas** las llamadas de criterios, selección, criba, reintentos y herramientas web. Como ejemplo de volumen, la documentación previa estimaba 6.600 tokens de entrada y 300 de salida para una petición; no debe tomarse como coste total medido de una conversación. Las tarifas se deben consultar al contratar el proveedor. El coste mensual local puede estimarse como `amortización + mantenimiento + licencias + kW medios × horas de uso × precio del kWh`. No se ha medido todavía el consumo eléctrico.
+
+**Referencia de latencias** (RTX 5080, modelos ya cargados). Los siguientes tiempos proceden de las pruebas descritas en versiones anteriores del proyecto; no se han reproducido en esta revisión ni se adjunta un registro de benchmark. Son orientativos, no una garantía para otro equipo:
 
 | Paso | Tiempo |
 | --- | --- |
@@ -56,9 +79,13 @@ flowchart LR
 
 Una conversación de tres turnos por voz tarda en total unos 80 s. En cuanto se conocen plazo, riesgo y divisa, un hilo en segundo plano decide los criterios, filtra el catálogo y lee el histórico mientras la página hace las preguntas de asesor; cuando el cliente contesta solo queda elegir. Si responde de inmediato (por escrito), la espera vuelve a ser de unos 20 s. Sin GPU el modelo es más pequeño y ve menos candidatos, a costa de calidad.
 
-**Normativa.** Proponer una cartera con pesos a una persona concreta es asesoramiento en materia de inversión: en España solo puede prestarlo una entidad autorizada, con test de idoneidad (MiFID II) y entrega del documento de datos fundamentales de cada producto (PRIIPs). Este MVP pregunta por objetivo, experiencia y tolerancia a pérdidas y baja el riesgo si no cuadran, pero eso no es un test de idoneidad. Por eso el modelo de negocio es B2B2C. La voz es un dato personal (RGPD): el audio se transcribe en local y no se guarda; la voz neuronal de las respuestas envía a un tercero el texto de la respuesta, no la voz del cliente, y se puede desactivar. El catálogo EODHD tiene licencia y no está en el repositorio.
+**Objetivo de UX, pendiente de medir sistemáticamente.** Con modelos cargados, se busca responder a las preguntas de perfil en unos 3 s y generar la propuesta en unos 30 s; la carga inicial se mide aparte. Para comprobarlo, ejecutar la misma conversación al menos diez veces por configuración y registrar mediana, percentil 95, errores y uso de respaldos. La aplicación muestra el tiempo por turno, pero aún no aporta este benchmark completo.
 
-**Monetización.** Licencia por puesto de asesor o por oficina, instalada en la infraestructura de la entidad (los datos del cliente no salen de ella). El valor que se cobra es tiempo de preparación de la reunión y trazabilidad de la propuesta. No hemos validado precios ni disposición a pagar.
+**Marco financiero.** La CNMV describe las recomendaciones personalizadas sobre productos como asesoramiento y exige evaluar conocimientos, experiencia, situación financiera y objetivos del cliente. Las preguntas de este MVP no constituyen una evaluación completa de idoneidad. Un uso comercial requeriría concretar el servicio con una entidad autorizada y revisar sus obligaciones; elegir B2B2C no acredita por sí mismo cumplimiento. Referencias: [asesoramiento](https://www.cnmv.es/portal/inversor/asesoramiento?lang=es) y [evaluación de idoneidad](https://internet.cnmv.es/portal/inversor/idoneidad?lang=es), consultadas el 08/10/2026.
+
+**Privacidad y datos.** La aplicación procesa transcripciones, preferencias y audio, que pueden contener datos personales. Whisper transcribe en local y elimina el archivo temporal; la conversación y los audios de respuesta permanecen en el estado de sesión y el usuario puede descargar documentos. `VOICE=auto` puede enviar el texto de respuesta a Microsoft; Claude recibe conversación y candidatos si se activa. La demo debe usar datos ficticios. Antes de un uso con clientes habría que definir base jurídica, información al interesado, conservación, control de acceso y condiciones de los proveedores, siguiendo la [protección de datos por defecto de la AEPD](https://www.aepd.es/derechos-y-deberes/cumple-tus-deberes/medidas-de-cumplimiento/proteccion-de-datos-por-defecto), consultada el 08/10/2026. No se ha realizado una auditoría de cumplimiento. El catálogo EODHD y los documentos externos requieren comprobar sus derechos de uso y redistribución.
+
+**Monetización y validación de mercado.** Hipótesis: licencia por puesto de asesor o por oficina, con procesamiento local y servicios externos desactivados cuando se requiera mantener los datos en la infraestructura de la entidad. El valor propuesto es reducir tiempo de preparación y hacer comprensible la propuesta. Falta validar precios y disposición a pagar. El siguiente paso sería entrevistar a asesores y realizar un piloto con casos ficticios, comparando tiempo de preparación, correcciones necesarias y comprensión del informe frente al procedimiento habitual.
 
 ## Requisitos
 
@@ -88,7 +115,7 @@ Para importar el catálogo más tarde: `.venv\Scripts\python scripts\import_cata
 
 A mano, sin los `.bat`:
 
-```bash
+```powershell
 py -3.11 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt --only-binary=llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 .venv\Scripts\python scripts\download_models.py
@@ -96,6 +123,51 @@ py -3.11 -m venv .venv
 ```
 
 En la página **Pruebas y estado** se ve qué está instalado y qué falta, y se pueden ejecutar las pruebas automáticas desde el navegador.
+
+## Demostración funcional para la entrega
+
+La modalidad elegida es una **demo interactiva local**, admitida por el apartado 5.2 del enunciado. El repositorio permite prepararla sin los datos privados. Las capturas y las pruebas automáticas son evidencias complementarias; no sustituyen mostrar el funcionamiento con los modelos y el micrófono. No se incluye una grabación ni un despliegue público en esta entrega documental.
+
+Después de ejecutar `instalar.bat`, abrir PowerShell en la carpeta del proyecto y arrancar una sesión con datos ficticios y voz local:
+
+```powershell
+$env:CATALOG = "demo"
+$env:VOICE = "local"
+$env:AI_FILTER = "auto"
+$env:ADVISOR_WEB = "off"
+.\.venv\Scripts\python -m streamlit run app.py
+```
+
+Estas variables se aplican a esa terminal y prevalecen sobre `.env`. Abrir `http://localhost:8501`, permitir el micrófono y comprobar en **Pruebas y estado** que Whisper, Piper y al menos un selector de lenguaje están disponibles. En CPU, elegir Gemma 3 1B; en GPU, Gemma 3 4B. Si solo aparecen reglas, se puede verificar la interfaz, pero no se estará demostrando el encadenamiento completo de modelos.
+
+| Paso de la demo, unos 3–5 minutos | Acción | Resultado que debe comprobarse |
+| --- | --- | --- |
+| 1. Identificar configuración | Mostrar Especialistas, el catálogo sintético y los modelos de la barra lateral. | Queda claro qué datos y modelos se están usando. |
+| 2. Entrada de voz | Activar manos libres o pulsar para hablar: «Quiero invertir diez mil euros». | Se transcribe la petición y se preguntan los datos obligatorios que faltan. |
+| 3. Conversación | Contestar: «A cinco años, riesgo medio». Después: «Quiero hacer crecer el dinero, tengo experiencia y esperaría si cae». | El perfil se completa; se activan los criterios cuando el selector lo permite y se eligen fondos del catálogo. |
+| 4. Salidas | Escuchar el resumen, mostrar la tabla y descargar PDF y audio. | La propuesta tiene fondos, pesos e importes; el informe contiene gráficos y explica los límites de los datos sintéticos. |
+| 5. Corrección y robustez | Escribir «No quiero riesgo alto, prefiero riesgo bajo» o editar el perfil; después probar «menos cien euros» y corregirlo a «diez mil euros». | Se respeta la corrección de riesgo, se pide aclaración del importe inválido y se puede continuar. |
+| 6. Comparación opcional | Con GPU, repetir la conversación en Modelo único. | Se observan diferencias de tiempo y extracción; no se presenta esta variante como superior sin medirla. |
+
+Para mostrar la búsqueda en folletos y el histórico, realizar una segunda demo con datos autorizados: reiniciar sin `CATALOG=demo`, importar los documentos y comprobar que se detecta el Parquet. Esas capacidades **no se activan con los diez fondos ficticios**. Si se elige una grabación en vez de la demo en vivo, debe mostrar estos pasos y añadirse al aula o enlazarse desde el repositorio con permiso de acceso.
+
+El [pitch técnico de cinco diapositivas](docs/pitch_fondoclaro_v3.pptx) acompaña la presentación. Su texto abreviado debe leerse con los límites de costes, latencias y privacidad de este README; el uso local no elimina el coste de operación y la voz en línea sí envía texto fuera del equipo.
+
+## Validación y resultados
+
+Para ejecutar la batería automática sin inferencias reales:
+
+```powershell
+.\.venv\Scripts\python -m unittest discover -s tests -v
+```
+
+**Comprobación del 08/10/2026:** 89 pruebas ejecutadas, todas correctas. Cubren extracción y diálogo, negaciones, restricciones, reparto, importes, PDF, agrupación y criba, además de flujos de las dos páginas con modelos simulados. El recorrido de datos sintéticos permite repetir estas comprobaciones sin el catálogo privado.
+
+Esta ejecución no verifica reconocimiento de voz real, calidad de Gemma, disponibilidad de Claude, el servicio de voz en línea, la instalación en un equipo limpio ni el histórico privado completo. Los mensajes de Streamlit durante las pruebas incluyen una advertencia de obsolescencia de `st.components.v1.html`; no produjo fallos, pero queda pendiente migrar ese uso.
+
+![Página de comprobaciones de la aplicación](docs/images/pruebas.png)
+
+La captura ilustra la página de estado; el resultado actual de la revisión es el indicado arriba. La comparación de modelos y los tiempos de otras secciones son observaciones previas, no resultados de esta batería. Para evaluar calidad real se necesita un conjunto de conversaciones etiquetadas y registrar campos extraídos correctamente, restricciones respetadas, propuestas completadas, uso de respaldos y latencia por etapa.
 
 ## Qué hay en la página
 
@@ -113,7 +185,7 @@ Hay tres formas de conversar, que se eligen encima del micrófono:
 
 En la barra lateral, «Perfil interpretado (editable)» muestra lo que la página ha entendido y permite corregirlo a mano; al aplicar los cambios se recalcula la propuesta. Cada versión conserva su propia conversación al pasar de una a otra. Si la voz o el PDF fallan, la propuesta se muestra igualmente en pantalla.
 
-**Voz.** Las respuestas usan una voz neuronal en línea (`es-ES-ElviraNeural`, a través del paquete `edge-tts`), más natural que la local. Envía el texto de cada respuesta al servicio de voz de Microsoft y no es una API oficial. Con `VOICE=local` en `.env`, o sin conexión, se usa Piper y nada sale del equipo.
+**Voz.** Las respuestas usan una voz neuronal en línea (`es-ES-ElviraNeural`, a través del paquete `edge-tts`). Envía el texto de cada respuesta al servicio de voz de Microsoft y no es una API oficial. Con `VOICE=local` en `.env`, o si falla la conexión, se intenta usar Piper. Esta opción evita el envío de texto para sintetizar voz, pero no desactiva Claude si se ha seleccionado por separado.
 
 **Entender lo que dices.** Por defecto lo hacen unas reglas en español, instantáneas. Con «Reglas + modelo de lenguaje», Gemma 3 4B lee además cada frase. En una prueba con ocho frases coloquiales el modelo captó cosas que las reglas no («bolsa americana», importes en letra), pero tardó 8–13 s por turno, se equivocó en algún dato y rellenó rasgos que nadie había dicho; por eso solo se le toman plazo, riesgo, divisa, importe, zona y sector, y las reglas tienen la última palabra.
 
@@ -123,7 +195,32 @@ En la barra lateral, «Perfil interpretado (editable)» muestra lo que la págin
 
 ## Entradas, modelos y salidas
 
-Hay un diagrama por versión. Cada cuadro de modelo indica, por este orden, el paso, el modelo instalado y el que creemos que funcionaría mejor (no probado aquí). Los cuadros «sin modelo» son código.
+Hay un diagrama por versión. Cada cuadro indica el paso, el modelo integrado en el código y, cuando procede, una alternativa sin probar. La disponibilidad depende de la instalación. Los cuadros «sin modelo» son código; sus gráficos y PDF no cuentan como generación de imágenes mediante un modelo.
+
+| Modalidad | Implementación | Límite de la evidencia |
+| --- | --- | --- |
+| Audio → texto | Whisper en Especialistas; Gemma 3n en Modelo único. | Requiere modelos descargados y prueba real con micrófono. |
+| Texto → decisiones estructuradas | Gemma propone criterios y selección; el código valida y calcula las cifras. | CPU omite criterios; «Solo reglas» omite el modelo de lenguaje. |
+| Texto → audio | Voz en línea o Piper local. | Gemma 3n no genera el audio de respuesta. |
+| Documento → texto y búsqueda | Extracción de PDF/HTML con reglas y embeddings MiniLM sobre los objetivos. | Es extracción textual, no OCR ni comprensión visual de páginas escaneadas. Requiere folletos externos. |
+| Datos tabulares/series → gráficos y PDF | Catálogo, histórico opcional y ReportLab. | Salida multimedia programática; no hay un modelo de texto a imagen. |
+| Imagen → texto | Entrada de imagen en Gemma 3n. | Interfaz implementada; evaluación real de imágenes pendiente. |
+
+La cadena principal para demostrar pluralidad de modelos es **Whisper → Gemma → Piper** (o voz en línea), con filtros deterministas entre etapas y MiniLM cuando hay folletos. Modelo único comparte herramientas y voz externa: el nombre describe el modelo de comprensión y selección, no la eliminación de todos los demás componentes.
+
+## Arquitectura por capas
+
+| Capa | Responsabilidad | Módulos principales |
+| --- | --- | --- |
+| Interfaz y sesión | Navegación, micrófono, chat, edición del perfil, reproducción y descargas. | `app.py`, `paginas/`, `src/ui.py`, `componentes/manos_libres/` |
+| Acceso a modelos | Transcripción, generación, embeddings, extracción opcional y síntesis de voz. | `src/audio.py`, `src/hf_model.py`, `src/ai_filter.py`, `src/omni.py`, `src/extraction.py`, `src/semantic.py`, `src/tts.py` |
+| Lógica de negocio | Diálogo, preferencias, restricciones, ranking, validación y reparto monetario. | `src/conversation.py`, `src/preferences.py`, `src/recommender.py`, `src/money.py`, `src/models.py` |
+| Datos y coordinación | Importación, folletos, series y preparación de candidatos en segundo plano. | `scripts/`, `src/catalog.py`, `src/brochures.py`, `src/history.py`, `src/screening.py` |
+| Presentación de resultados | Resumen hablado, informe y gráficos calculados a partir de los datos. | `src/report.py` |
+
+Los modelos devuelven preferencias, criterios o identificadores de candidatos; el código aplica filtros y valida el reparto antes de presentar resultados. `src/ui.py` coordina las capas y `src/ai_filter.py` combina adaptadores con validación: es una separación modular de MVP, no una arquitectura de servicios independientes. Si falla la selección del modelo se usan reglas; si falla la voz o el PDF se conserva la propuesta en pantalla. La ausencia de históricos y folletos reduce las capacidades sin impedir el recorrido con datos sintéticos.
+
+Los diagramas siguientes detallan el flujo de datos de las dos versiones.
 
 ### Versión Especialistas: un modelo adaptado a cada paso
 
@@ -141,19 +238,19 @@ flowchart LR
 
     subgraph MOD[Modelos, en cadena]
         direction TB
-        E1[Voz a texto<br/>Whisper large-v3-turbo en GPU · small en CPU<br/>mejor: Parakeet TDT v3]
-        E2[Extraer preferencias y preguntar<br/>Reglas en español · opcional Gemma 3 4B<br/>mejor: Gemma 3 12B o Claude Haiku 4.5]
-        E3[Decidir criterios de búsqueda<br/>Gemma 3 4B en GPU<br/>mejor: Gemma 3 12B o Claude Opus 5.5]
-        E4[Búsqueda semántica en folletos<br/>MiniLM multilingüe en CPU<br/>mejor: bge-m3]
+        E1[Voz a texto<br/>Whisper large-v3-turbo en GPU · small en CPU<br/>alternativa: Parakeet TDT v3]
+        E2[Extraer preferencias y preguntar<br/>Reglas en español · opcional Gemma 3 4B<br/>alternativa: Gemma 3 12B o Claude Haiku 4.5]
+        E3[Decidir criterios de búsqueda<br/>Gemma 3 4B en GPU<br/>alternativa: Gemma 3 12B o Claude Opus 5.5]
+        E4[Búsqueda semántica en folletos<br/>MiniLM multilingüe en CPU<br/>alternativa: bge-m3]
         E5[Filtrar el catálogo, caídas y grupos de fondos parecidos<br/>sin modelo]
-        E6[Elegir y repartir, una línea por grupo<br/>Gemma 3 4B en GPU · respaldo Gemma 3 1B en CPU<br/>mejor: Gemma 3 12B o Claude Opus 5.5]
+        E6[Elegir y repartir, una línea por grupo<br/>Gemma 3 4B en GPU · respaldo Gemma 3 1B en CPU<br/>alternativa: Gemma 3 12B o Claude Opus 5.5]
         E1 --> E2 --> E3 --> E4 --> E5 --> E6
     end
 
     subgraph VOZ[De texto a voz]
         direction TB
         T1[Redactar lo que se va a decir<br/>plantillas con las cifras de los datos<br/>sin modelo]
-        T2[Texto a voz<br/>es-ES-ElviraNeural con edge-tts, en línea<br/>respaldo: Piper es_ES-davefx-medium, local en CPU<br/>mejor local: Kokoro o XTTS-v2]
+        T2[Texto a voz<br/>es-ES-ElviraNeural con edge-tts, en línea<br/>respaldo: Piper es_ES-davefx-medium, local en CPU<br/>alternativa local: Kokoro o XTTS-v2]
         T1 --> T2
     end
 
@@ -198,7 +295,7 @@ flowchart LR
 
     subgraph UNI[Un único modelo para todo]
         direction TB
-        U1[Oír · entender · preguntar · decidir criterios · elegir y repartir<br/>Gemma 3n E2B en GPU<br/>mejor: Gemma 3n E4B o Gemini]
+        U1[Oír · entender · preguntar · decidir criterios · elegir y repartir<br/>Gemma 3n E2B en GPU<br/>alternativa: Gemma 3n E4B o Gemini]
         U2[Búsqueda semántica en folletos<br/>MiniLM multilingüe en CPU]
         U3[Filtrar el catálogo, caídas y grupos de fondos parecidos<br/>sin modelo]
         U1 -- criterios --> U2 --> U3
@@ -238,7 +335,7 @@ flowchart LR
 
 ### Cómo se crea la voz
 
-1. **El texto lo escribe el código, no un modelo.** Las preguntas («¿durante cuántos años…?») y el resumen final son plantillas que se rellenan con las cifras de los datos: número de fondos, rentabilidad y caída de la cartera, lo que ganó un fondo comparable. Así lo que se oye no puede contener una cifra inventada. La única excepción es la versión de modelo único, donde Gemma 3n redacta las preguntas de asesor.
+1. **Las métricas del resumen proceden del código y los datos.** Las preguntas obligatorias («¿durante cuántos años…?») y el resumen final son plantillas con número de fondos, rentabilidad y caída de la cartera y lo que ganó un fondo comparable. Gemma 3n redacta las preguntas de asesor en Modelo único. Separar cálculo y generación reduce el riesgo de inventar cifras, pero no acredita la exactitud de los datos de origen ni de todo texto generado.
 2. **Un modelo de texto a voz lo convierte en audio.** Por defecto, la voz neuronal `es-ES-ElviraNeural`, a la que se llama por internet con el paquete `edge-tts` (servicio de voz de Microsoft, no oficial): se le envía el texto y devuelve un MP3, que se convierte a WAV. Si no hay conexión, el paquete no está o se pone `VOICE=local`, lo hace Piper con la voz `es_ES-davefx-medium`, un modelo pequeño que corre en la CPU del equipo.
 3. **El navegador lo reproduce.** En manos libres suena solo y, al acabar, el micrófono vuelve a escuchar. El resumen final se puede además descargar.
 
@@ -342,7 +439,7 @@ Los fondos que solo tienen folleto siguen sin poder puntuarse: el Parquet contie
 | Hablar | Voz neuronal en línea o Piper | La misma (Gemma 3n no genera voz) |
 | Memoria de GPU | unos 6 GB (Gemma 3 4B en 4 bits y Whisper) | 11 GB |
 
-Las dos comparten catálogo, filtros, validación, PDF y voz, así que la diferencia que se observa es la de los modelos. Cada respuesta muestra los segundos que ha tardado. En la GPU solo hay un modelo cargado a la vez: al cambiar de versión, la primera respuesta tarda más.
+Las dos comparten catálogo, filtros, validación, PDF y voz. La comparación cambia tanto los modelos como parte de la orquestación, por lo que no es un experimento que aísle una única variable. Cada respuesta muestra los segundos que ha tardado. El gestor mantiene un modelo Gemma a la vez en GPU; Whisper se carga por separado. Al cambiar de versión puede ser necesario recargar Gemma.
 
 **Primera comparación.** Es una sola conversación de tres turnos hablados, con voz sintética y un micrófono simulado en el navegador; no es una evaluación.
 
@@ -351,9 +448,9 @@ Las dos comparten catálogo, filtros, validación, PDF y voz, así que la difere
 
 ## Modelos candidatos por paso
 
-En negrita, el instalado. Las alternativas no se han probado aquí.
+En negrita, las integraciones previstas por el código y los instaladores, no una certificación de que estén disponibles en cualquier equipo. Las alternativas no se han probado aquí ni se afirma que sean superiores; hay que verificar sus requisitos y disponibilidad antes de sustituir un modelo.
 
-| Paso | Instalado | Alternativa local | Alternativa en la nube |
+| Paso | Integración actual | Alternativa local | Alternativa en la nube |
 | --- | --- | --- | --- |
 | Voz a texto | **Whisper `large-v3-turbo`** (GPU) · **Whisper `small`** (CPU) | NVIDIA Parakeet TDT v3 | `gpt-4o-transcribe` |
 | Búsqueda semántica en folletos | **`paraphrase-multilingual-MiniLM-L12-v2`** (CPU, con fastembed) | `bge-m3`; `multilingual-e5-large` | Embeddings por API |
@@ -363,7 +460,7 @@ En negrita, el instalado. Las alternativas no se han probado aquí.
 | Modelo único multimodal | **Gemma 3n E2B** (GPU, 11 GB) | Gemma 3n E4B; Phi-4 multimodal; Qwen2.5-Omni | Gemini; GPT-4o audio |
 | Leer folletos, DFI y KID | **Reglas sobre el texto del PDF** (PyMuPDF, sin modelo) | Docling; Qwen2.5-VL para escaneados | Claude con PDF |
 
-Para cambiar el Whisper de CPU: `WHISPER_MODEL=medium` en `.env` y volver a ejecutar `scripts/download_models.py`.
+Para cambiar el Whisper de CPU, poner `WHISPER_MODEL=medium` en `.env` y ejecutar la descarga desde PowerShell con la misma variable: `$env:WHISPER_MODEL = "medium"`, seguido de `.\.venv\Scripts\python scripts\download_models.py`. El script de descarga no carga `.env` por sí solo.
 
 Whisper, ante silencio o ruido, escribe frases que aprendió de vídeos subtitulados («Subtítulos por la comunidad de Amara.org», «¡Suscríbete!»). La app las descarta y, en manos libres, sigue escuchando sin decir nada.
 
