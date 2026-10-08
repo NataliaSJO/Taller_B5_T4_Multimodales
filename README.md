@@ -409,4 +409,4 @@ requirements-gpu.txt       Dependencias de los modelos de GPU
 requirements-claude.txt    Solo si se activa Claude por API
 ```
 
-El dataset EODHD y sus derechos de uso no se incluyen en el repositorio; no lo publiques sin comprobar la licencia. Gemma se distribuye bajo los términos de uso de Google y Piper (`piper-tts`) bajo GPL-3.0.
+El dataset EODHD y sus derechos de uso no se incluyen en el repositorio; por cuestiones de la licencia. Gemma se distribuye bajo los términos de uso de Google y Piper (`piper-tts`) bajo GPL-3.0.
