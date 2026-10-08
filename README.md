@@ -20,7 +20,7 @@ Referencia: [enunciado del Taller B5-T4](Taller_B5_T4.pdf). La práctica pide un
 
 | Requisito | Dónde se documenta o demuestra | Alcance y estado |
 | --- | --- | --- |
-| 4.1. Problema, público y propuesta de valor | [Idea y propuesta de valor](#el-problema-para-quién-y-por-qué-multimodal) y esquema Mermaid | Propuesta B2B2C; hipótesis de mercado pendiente de validar con asesores. |
+| 4.1. Problema, público y propuesta de valor | [Idea y propuesta de valor](#el-problema-para-quién-y-por-qué-multimodal) y esquema Mermaid | Propuesta B2B2C; hipótesis de mercado pendiente de validar. |
 | 4.1. Viabilidad técnica y económica | [Viabilidad](#viabilidad) | Costes, latencia, privacidad, marco financiero y monetización; se distinguen estimaciones de resultados comprobados. |
 | 4.2. Diversidad de modalidades | [Entradas, modelos y salidas](#entradas-modelos-y-salidas) | Voz, texto y salidas de audio y PDF; documentos e históricos opcionales. Imagen disponible en Modelo único, sin evaluación real documentada. |
 | 4.2. Orquestación de modelos | Diagramas de ambas versiones y [arquitectura por capas](#arquitectura-por-capas) | Especialistas es la versión principal para mostrar el encadenamiento; Modelo único es una comparación experimental. |
@@ -31,7 +31,6 @@ Referencia: [enunciado del Taller B5-T4](Taller_B5_T4.pdf). La práctica pide un
 | 5.1. Repositorio del MVP | [Repositorio en GitHub](https://github.com/NataliaSJO/Taller_B5_T4_Multimodales) | Código y datos sintéticos incluidos; datos privados y pesos de modelos no se distribuyen. |
 | 5.2. Demostración funcional | [Guion de demostración](#demostración-funcional-para-la-entrega) | Modalidad prevista: demo interactiva local. No se aporta aquí una URL pública ni una grabación; debe ejecutarse ante el evaluador o adjuntarse un vídeo. |
 
-**Entrega académica:** grupo de tres estudiantes; entrega mediante el aula virtual el **8 de octubre de 2026 a las 18:00**, según el enunciado. Antes de entregar, comprobar que el enlace del aula apunta a la versión que se va a demostrar.
 
 ## El problema, para quién y por qué multimodal
 
@@ -55,14 +54,12 @@ flowchart LR
 ```
 
 - **Problema.** Elegir fondos exige traducir una necesidad cotidiana («tengo 20.000 euros para diez años y no quiero sustos») a filtros técnicos, y cruzar datos que están en formatos distintos: series de precios, folletos en PDF, fichas comerciales.
-- **Público objetivo: B2B2C.** El usuario es el asesor o el gestor de una entidad que ya tiene autorización y controles de idoneidad; el beneficiario es su cliente. No se plantea como servicio directo al público (ver «Normativa»).
+- **Público objetivo: B2B2C.** El usuario es el asesor o el gestor de una entidad que ya tiene autorización y controles de idoneidad; el beneficiario es su cliente. No se plantea como servicio directo al público.
 - **Qué aporta la multimodalidad.** La voz elimina el formulario: quien no sabe qué es la volatilidad puede explicar lo que quiere y contestar preguntas. Los documentos (DFI, KID, fichas) aportan lo que no está en los precios: riesgo oficial, costes y mínimos. Las series temporales dicen cómo se mueven los fondos entre sí. Y la salida vuelve a ser multimodal: una explicación hablada para el momento y un PDF con gráficos para decidir después.
 
 ## Viabilidad
 
-**Coste de inferencia y APIs.** Con modelos locales y `VOICE=local` no hay facturación de un proveedor por llamada, pero sí consumo eléctrico, amortización del equipo, mantenimiento y licencias de datos. La voz en línea depende de un servicio externo no oficial: no se asume disponibilidad garantizada ni un contrato de servicio. Claude es opcional y se factura aparte; no se ha validado aquí su tarifa ni la disponibilidad del identificador de modelo configurado.
-
-Para presupuestar una API: `coste = tokens_entrada / 1.000.000 × tarifa_entrada + tokens_salida / 1.000.000 × tarifa_salida`, sumando **todas** las llamadas de criterios, selección, criba, reintentos y herramientas web. Como ejemplo de volumen, la documentación previa estimaba 6.600 tokens de entrada y 300 de salida para una petición; no debe tomarse como coste total medido de una conversación. Las tarifas se deben consultar al contratar el proveedor. El coste mensual local puede estimarse como `amortización + mantenimiento + licencias + kW medios × horas de uso × precio del kWh`. No se ha medido todavía el consumo eléctrico.
+**Coste de inferencia y APIs.** Con modelos locales y `VOICE=local` no hay facturación de un proveedor por llamada, el único gasto para esta práctica es las licencias de datos. No se han tenido en cuenta otro tipo de gastos. La voz en línea depende de un servicio externo no oficial: no se asume disponibilidad garantizada ni un contrato de servicio. Claude es opcional y se factura aparte; no se ha validado aquí su tarifa ni la disponibilidad del identificador de modelo configurado.
 
 **Referencia de latencias** (RTX 5080, modelos ya cargados). Los siguientes tiempos proceden de las pruebas descritas en versiones anteriores del proyecto; no se han reproducido en esta revisión ni se adjunta un registro de benchmark. Son orientativos, no una garantía para otro equipo:
 
@@ -102,7 +99,7 @@ Una conversación de tres turnos por voz tarda en total unos 80 s. En cuanto se 
 
 Con la instalación básica funciona toda la conversación por voz, el informe y el audio; la voz se transcribe con Whisper `small` y los fondos los elige Gemma 3 1B en CPU entre 10 líneas, sin el paso de criterios. La parte 2 añade Whisper `large-v3-turbo` en GPU, el modelo que decide los criterios y elige entre 150 líneas (Gemma 3 4B) y la página «Modelo único» (Gemma 3n).
 
-## Arranque tras clonar (Windows)
+## Arranque tras clonar el repositorio (Windows)
 
 1. Copia a la carpeta del proyecto `catalogo_fondos.md` y, si los tienes, la carpeta `folletos/` y `fondos_diarios.parquet` (ninguno está en el repositorio). También se encuentran solos si están en una carpeta `datos` junto al proyecto. Sin el catálogo se usan 10 fondos sintéticos de ejemplo.
 2. Doble clic en **`instalar.bat`**. Crea el entorno, instala las dependencias, descarga los modelos básicos (1,3 GB), importa el catálogo y procesa los folletos si los encuentra (la primera vez, unos minutos más para el índice de búsqueda semántica). Funciona en cualquier equipo, sin GPU.
