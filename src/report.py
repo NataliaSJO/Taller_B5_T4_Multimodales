@@ -118,8 +118,11 @@ def brief_summary(proposal: Proposal, preferences: Preferences, notes: list[str]
         if kind:
             kinds[kind] = kinds.get(kind, 0) + 1
     if sum(kinds.values()) >= max(2, count - 1):      # only when the documents describe most of them
-        mix = [f"{number} {kind}" for kind, number in sorted(kinds.items(), key=lambda pair: -pair[1])]
-        parts.append("Son " + (", ".join(mix[:-1]) + " y " + mix[-1] if len(mix) > 1 else mix[0]) + ".")
+        words = ("", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete")
+        one = {"mixtos": "mixto", "monetarios": "monetario"}      # «uno mixto», «dos mixtos»
+        mix = [f"{words[number]} {one.get(kind, kind) if number == 1 else kind}"
+               for kind, number in sorted(kinds.items(), key=lambda pair: -pair[1])]
+        parts.append("De ellos, " + (", ".join(mix[:-1]) + " y " + mix[-1] if len(mix) > 1 else mix[0]) + ".")
     if count > 1:
         parts.append(f"El dinero queda repartido y ningún fondo pesa más del {_round(max(float(w) for w in weights))} por ciento.")
 

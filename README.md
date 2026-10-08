@@ -48,10 +48,10 @@ flowchart LR
 | Transcribir un turno | 0,1 s en GPU (Whisper large-v3-turbo); alrededor de 1 s en CPU (Whisper small) |
 | Entender y preguntar (reglas) | menos de 1 s, más 1–2 s de voz |
 | Decidir criterios (Gemma 3 4B) | unos 10 s |
-| Filtrar el catálogo, búsqueda semántica e histórico diario | 2–3 s |
+| Filtrar el catálogo, búsqueda semántica e histórico diario de hasta 2.000 candidatos | 4–6 s |
 | Elegir y repartir (Gemma 3 4B) | unos 8 s |
 | Informe y voz del resumen | 3–5 s |
-| **Propuesta completa, hecha de una vez** | **25–35 s** |
+| **Propuesta completa, hecha de una vez** | **20–35 s** |
 | **Propuesta tras conversar por voz** (lo adelantado en segundo plano) | **unos 11 s** |
 
 Una conversación de tres turnos por voz tarda en total unos 80 s. En cuanto se conocen plazo, riesgo y divisa, un hilo en segundo plano decide los criterios, filtra el catálogo y lee el histórico mientras la página hace las preguntas de asesor; cuando el cliente contesta solo queda elegir. Si responde de inmediato (por escrito), la espera vuelve a ser de unos 20 s. Sin GPU el modelo es más pequeño y ve menos candidatos, a costa de calidad.
@@ -66,21 +66,21 @@ Una conversación de tres turnos por voz tarda en total unos 80 s. En cuanto se 
 | --- | --- | --- |
 | Sistema | Windows 10 u 11 de 64 bits | El mismo |
 | Python | 3.11, con el lanzador `py` (viene con el instalador de python.org) | El mismo |
-| Procesador y memoria | Cualquier CPU reciente; 8 GB de RAM | 16 GB de RAM |
+| Procesador y memoria (orientativo, no medido) | Cualquier CPU reciente; 8 GB de RAM | 16 GB de RAM |
 | Tarjeta gráfica | No hace falta | NVIDIA con 12 GB de memoria o más y controlador reciente (se instala PyTorch para CUDA 12.8) |
-| Disco | 3 GB (entorno y 1,4 GB de modelos) | 24 GB más (PyTorch con CUDA y 19 GB de modelos) |
-| Internet | Para instalar; después solo para la voz neuronal | Para instalar |
+| Disco | 2 GB (entorno 0,7 GB y modelos 1,3 GB) | unos 26 GB más (PyTorch con CUDA, 5 GB, y 21 GB de modelos) |
+| Internet | Para instalar y para la primera vez que se procesan los folletos (descarga el modelo de embeddings); después solo para la voz neuronal | Para instalar |
 | Navegador | Chrome o Edge recientes, con permiso de micrófono | El mismo |
 | Datos | `catalogo_fondos.md` y, opcionalmente, la carpeta `folletos/` y `fondos_diarios.parquet` (no están en el repositorio); sin catálogo se usan 10 fondos de ejemplo | Los mismos |
 
-Con la instalación básica funciona toda la conversación por voz, el informe y el audio; los fondos los elige Gemma 3 1B en CPU entre 10 candidatos. La parte 2 añade el modelo que decide los criterios y elige entre 150 candidatos (Gemma 3 4B) y la página «Modelo único» (Gemma 3n).
+Con la instalación básica funciona toda la conversación por voz, el informe y el audio; la voz se transcribe con Whisper `small` y los fondos los elige Gemma 3 1B en CPU entre 10 líneas, sin el paso de criterios. La parte 2 añade Whisper `large-v3-turbo` en GPU, el modelo que decide los criterios y elige entre 150 líneas (Gemma 3 4B) y la página «Modelo único» (Gemma 3n).
 
 ## Arranque tras clonar (Windows)
 
-1. Copia `catalogo_fondos.md` y, si la tienes, la carpeta `folletos/` (ninguno está en el repositorio) a la carpeta del proyecto. Sin el catálogo se usan 10 fondos sintéticos de ejemplo.
-2. Doble clic en **`instalar.bat`**. Crea el entorno, instala las dependencias, descarga los modelos básicos (1,4 GB), importa el catálogo y procesa los folletos si los encuentra. Funciona en cualquier equipo, sin GPU.
+1. Copia a la carpeta del proyecto `catalogo_fondos.md` y, si los tienes, la carpeta `folletos/` y `fondos_diarios.parquet` (ninguno está en el repositorio). También se encuentran solos si están en una carpeta `datos` junto al proyecto. Sin el catálogo se usan 10 fondos sintéticos de ejemplo.
+2. Doble clic en **`instalar.bat`**. Crea el entorno, instala las dependencias, descarga los modelos básicos (1,3 GB), importa el catálogo y procesa los folletos si los encuentra (la primera vez, unos minutos más para el índice de búsqueda semántica). Funciona en cualquier equipo, sin GPU.
 3. Doble clic en **`iniciar.bat`**. Arranca la aplicación y abre `index.html`, la puerta de entrada con los enlaces.
-4. Opcional, solo con una NVIDIA de 12 GB o más: doble clic en **`instalar_parte2_opcional.bat`**. Instala PyTorch con CUDA y descarga 19 GB de modelos. Añade el filtro con Gemma 3 4B y la versión de modelo único.
+4. Opcional, solo con una NVIDIA de 12 GB o más: doble clic en **`instalar_parte2_opcional.bat`**. Instala PyTorch con CUDA y descarga 21 GB de modelos. Añade Whisper `large-v3-turbo`, el filtro con Gemma 3 4B y la versión de modelo único.
 
 La aplicación queda en `http://localhost:8501`. Clona el proyecto en una ruta corta (por ejemplo `C:\proyectos\`): en rutas muy largas la instalación falla por el límite de Windows.
 
@@ -150,11 +150,18 @@ flowchart LR
         E1 --> E2 --> E3 --> E4 --> E5 --> E6
     end
 
+    subgraph VOZ[De texto a voz]
+        direction TB
+        T1[Redactar lo que se va a decir<br/>plantillas con las cifras de los datos<br/>sin modelo]
+        T2[Texto a voz<br/>es-ES-ElviraNeural con edge-tts, en línea<br/>respaldo: Piper es_ES-davefx-medium, local en CPU<br/>mejor local: Kokoro o XTTS-v2]
+        T1 --> T2
+    end
+
     subgraph OUT[Salidas]
         direction TB
-        O1[🔊 Preguntas y resumen hablados<br/>Voz neuronal en línea · respaldo Piper local<br/>mejor local: Kokoro o XTTS-v2]
+        O1[🔊 Audio WAV que suena solo<br/>en el navegador]
         O2[📄 Informe PDF con gráficos<br/>ReportLab, sin modelo]
-        O3[🔊 Audio resumen descargable<br/>la misma voz]
+        O3[🔊 Audio resumen descargable]
         O4[🖥️ Tabla, perfil editable y avisos en pantalla<br/>sin modelo]
     end
 
@@ -165,10 +172,11 @@ flowchart LR
     I5 -- leídos con reglas --> E4
     I5 -- riesgo oficial, costes, mínimos --> E5
     I6 --> E5
-    E2 -- falta un dato --> O1
-    E6 --> O1
+    E2 -- falta un dato: pregunta --> T1
+    E6 -- fondos y pesos --> T1
+    T2 --> O1
+    T2 --> O3
     E6 --> O2
-    E6 --> O3
     E6 --> O4
     I6 -- evolución real y escenarios --> O2
 ```
@@ -197,9 +205,16 @@ flowchart LR
         U3 -- una línea por grupo --> U1
     end
 
+    subgraph VOZ2[De texto a voz · Gemma 3n no genera voz]
+        direction TB
+        V1[Redactar lo que se va a decir<br/>plantillas con las cifras de los datos<br/>las preguntas de asesor las escribe Gemma 3n]
+        V2[Texto a voz<br/>es-ES-ElviraNeural con edge-tts, en línea<br/>respaldo: Piper es_ES-davefx-medium, local en CPU]
+        V1 --> V2
+    end
+
     subgraph OUT2[Salidas]
         direction TB
-        P1[🔊 Preguntas y resumen hablados<br/>Voz neuronal en línea · respaldo Piper local<br/>Gemma 3n no genera voz]
+        P1[🔊 Audio WAV que suena solo<br/>en el navegador]
         P2[📄 Informe PDF con gráficos<br/>ReportLab, sin modelo]
         P3[🔊 Audio resumen descargable]
         P4[🖥️ Tabla, perfil editable y avisos en pantalla]
@@ -213,12 +228,21 @@ flowchart LR
     J6 --> U2
     J6 --> U3
     J7 --> U3
-    U1 --> P1
+    U1 -- preguntas, fondos y pesos --> V1
+    V2 --> P1
+    V2 --> P3
     U1 --> P2
-    U1 --> P3
     U1 --> P4
     J7 -- evolución real y escenarios --> P2
 ```
+
+### Cómo se crea la voz
+
+1. **El texto lo escribe el código, no un modelo.** Las preguntas («¿durante cuántos años…?») y el resumen final son plantillas que se rellenan con las cifras de los datos: número de fondos, rentabilidad y caída de la cartera, lo que ganó un fondo comparable. Así lo que se oye no puede contener una cifra inventada. La única excepción es la versión de modelo único, donde Gemma 3n redacta las preguntas de asesor.
+2. **Un modelo de texto a voz lo convierte en audio.** Por defecto, la voz neuronal `es-ES-ElviraNeural`, a la que se llama por internet con el paquete `edge-tts` (servicio de voz de Microsoft, no oficial): se le envía el texto y devuelve un MP3, que se convierte a WAV. Si no hay conexión, el paquete no está o se pone `VOICE=local`, lo hace Piper con la voz `es_ES-davefx-medium`, un modelo pequeño que corre en la CPU del equipo.
+3. **El navegador lo reproduce.** En manos libres suena solo y, al acabar, el micrófono vuelve a escuchar. El resumen final se puede además descargar.
+
+La frase que el modelo de lenguaje escribe sobre la cartera aparece en el PDF, no se lee en voz alta. El código está en `src/tts.py`.
 
 Las dos versiones comparten datos, filtros, validación, voz de respuesta e informe. Lo que cambia es quién oye, entiende, pregunta y decide: cuatro piezas especializadas en una, un solo modelo en la otra.
 
@@ -231,31 +255,34 @@ flowchart LR
     E --> F{¿Falta plazo,<br/>riesgo o divisa?}
     F -- sí --> Q[Pregunta hablada] --> U
     F -- no --> A[Preguntas de asesor:<br/>objetivo, experiencia, caídas]
-    A --> C[El modelo decide<br/>los criterios]
+    F -- no, en segundo plano --> C[El modelo decide<br/>los criterios]
     C --> R[El código los aplica<br/>a todo el catálogo]
     D[(92.257 fondos)] --> R
     K[(Folletos: riesgo oficial,<br/>costes, mínimos)] --> R
-    R --> L[El modelo elige y reparte<br/>entre 150 candidatos]
-    L --> P[Informe PDF]
-    L --> V[Audio resumen]
+    R --> G[Histórico diario: caídas<br/>y grupos de fondos parecidos]
+    H[(Precios diarios)] --> G
+    A --> L[El modelo elige y reparte<br/>una línea por grupo]
+    G --> L
+    L --> T[Resumen hablado breve<br/>y detalle si se pide]
+    L --> P[Informe PDF con gráficos]
 ```
 
 1. **Conversación.** Son obligatorios el plazo (de 1 a 30 años), el riesgo y la divisa. Los fondos se comparan con las cifras del catálogo a 1, 3 o 5 años, la ventana más cercana al plazo; el comportamiento de la cartera se calcula con el histórico diario de todo el plazo que exista. Lo que falte se pregunta por voz. Importe, zona, sector, clase de activo y grado de diversificación son opcionales.
 2. **Preguntas de asesor.** Una vez, y se pueden saltar: objetivo (crecer, conservar, rentas), experiencia y reacción ante una caída del 20 %. Si las respuestas no sostienen el riesgo declarado, se baja un nivel y se explica.
-3. **El modelo decide los criterios.** A partir de la conversación transcrita fija cuánto pesan el ajuste al riesgo, el Sharpe y la rentabilidad, la volatilidad objetivo, una rentabilidad mínima y, si el cliente pidió un tema («oro», «tecnología»), las palabras que deben aparecer en el nombre del fondo.
+3. **El modelo decide los criterios.** A partir de la conversación transcrita fija cuánto pesan el ajuste al riesgo, el Sharpe y la rentabilidad, la volatilidad objetivo, una rentabilidad mínima y, si el cliente pidió un tema («oro», «tecnología»), las palabras que deben aparecer en el nombre del fondo. Las palabras genéricas («fondo», «crecimiento», «diversificado») se descartan, y los fondos cuyo folleto es afín al tema pasan ese filtro aunque no lleven la palabra en el nombre.
 4. **El código los aplica a todo el catálogo.** Siempre se descartan los fondos de otra divisa, sin datos recientes o por encima de la volatilidad máxima del perfil (bajo 10 %, medio 20 %, alto 35 %): el modelo no puede subir el riesgo. Una ficha verificada que contradiga la preferencia no se sustituye por una coincidencia en el nombre. Se agrupan las posibles clases de participación por nombre, conservando números de índices y términos de cobertura; esta agrupación es aproximada.
-5. **El modelo elige y reparte.** Tras los filtros quedan hasta 2.000 candidatos. Con el histórico diario se agrupan los que se mueven muy parecido (correlación semanal superior a 0,9) y el modelo lee una línea por grupo, la del mejor fondo: 150 líneas representan a muchos más fondos (1.600 en una prueba sin tema concreto). Si la conversación da tiempo, el modelo criba además los grupos siguientes por lotes de 100 y sus elegidos entran en la lista final. Devuelve qué fondos y con qué peso. Se respeta un número concreto solicitado de 1 a 7 fondos; «un solo fondo» recibe el 100 %. Si no se indica, se eligen entre 2 y 7 según la diversificación. Sin el histórico diario, el modelo lee los 150 mejores candidatos.
-6. **Validación.** Solo se aceptan fondos de la lista y pesos numéricos finitos. Tanto el modelo como las reglas respetan un mínimo del 5 % y un máximo del 60 % por fondo (80 % si hay dos; 100 % si solo hay uno). Si el modelo falla o su reparto no es válido, deciden las reglas: inversa de la volatilidad, o más peso a los fondos que mejor encajan si el objetivo es crecer.
-7. **Segunda mirada con el histórico diario.** Si dos fondos elegidos se mueven casi igual (correlación semanal superior a 0,95), el peor colocado se sustituye por el siguiente candidato. Cuando deciden las reglas, el reparto pasa a ser por paridad de riesgo con las correlaciones reales.
+5. **El modelo elige y reparte.** Tras los filtros quedan hasta 2.000 candidatos. Con el histórico diario se agrupan los que se mueven muy parecido (correlación semanal superior a 0,9) y el modelo lee una línea por grupo, la del mejor fondo, con su caída máxima; las caídas mayores de lo que tolera el perfil (10 %, 25 % y 45 %; un 30 % menos si el cliente dijo que vendería) restan puntuación: 150 líneas representan a muchos más fondos (1.600 en una prueba sin tema concreto). Si la conversación da tiempo, el modelo criba además los grupos siguientes por lotes de 100 y sus elegidos entran en la lista final. Devuelve qué fondos y con qué peso. Se respeta un número concreto solicitado de 1 a 7 fondos; «un solo fondo» recibe el 100 %. Si no se indica, se eligen entre 2 y 7 según la diversificación. Sin el histórico diario, el modelo lee los 150 mejores candidatos.
+6. **Validación.** Solo se aceptan fondos de la lista y pesos numéricos finitos. Tanto el modelo como las reglas respetan un mínimo del 5 % y un máximo del 60 % por fondo (80 % si hay dos; 100 % si solo hay uno). Si el modelo falla o su reparto no es válido, deciden las reglas, que además no eligen dos fondos del mismo grupo. Sin histórico diario reparten por inversa de la volatilidad, o dan más peso a los fondos que mejor encajan si el objetivo es crecer.
+7. **Segunda mirada con el histórico diario.** Si dos fondos elegidos se mueven casi igual (correlación semanal superior a 0,95), el peor colocado se sustituye por el siguiente candidato. Cuando deciden las reglas y hay histórico, el reparto es por paridad de riesgo con las correlaciones reales.
 8. **Entrega.** La página resume la cartera de viva voz en menos de un minuto, en lenguaje llano y sin nombres ni pesos: cuántos fondos, de qué tipo, cuánto habría ganado y cuánto llegó a caer en conjunto. Lo pone en contexto: dice cuánto ganó un fondo comparable típico y, si los elegidos están entre los que mejor lo hicieron, avisa de que no hay que contar con que se repita. Después pregunta si se quiere el detalle y, solo entonces, lee fondo a fondo. En pantalla y en el PDF están siempre la conversación, el perfil, los criterios, la cartera y el porqué de cada fondo, con el porcentaje de fondos comparables al que superó; la evolución real que habría tenido la cartera, con su volatilidad y su caída máxima; y, en otro gráfico, tres escenarios para el plazo pedido: su peor año, un fondo comparable típico y su mejor año. Los importes se asignan a céntimos conservando el total y los límites de concentración.
 
 Se reconocen importes en EUR, USD, GBP y CHF, con cifras o expresados en español («diez mil euros», «10.000 dólares», «ciento veinte euros con cincuenta céntimos»). Los importes negativos, nulos o no interpretables que se detecten requieren aclaración; no se transforman en cantidades positivas. Cuando se pregunta por el importe, se puede contestar solo con la cantidad. El importe sigue siendo opcional si no se ha indicado.
 
-Los pasos 3 y 5 con 150 candidatos necesitan el filtro en GPU (o Claude). Con Gemma 3 1B en CPU no hay paso 3 y el modelo elige entre 10 candidatos.
+El paso 3 y las 150 líneas del paso 5 necesitan el filtro en GPU (o Claude). Con Gemma 3 1B en CPU no hay paso 3 y el modelo elige entre 10 líneas.
 
 ### Límites que conviene conocer
 
-- **Las cifras nunca salen del modelo.** Rentabilidades, volatilidades y motivos por fondo vienen del catálogo.
+- **Las cifras nunca salen del modelo.** Rentabilidades, volatilidades y motivos por fondo vienen del catálogo, de los folletos y del histórico diario.
 - **El modelo no lee los 92.257 fondos uno a uno.** No caben en su contexto: decide los criterios, el código los aplica a todos y el modelo elige entre una línea por grupo de fondos parecidos. La página dice cuántos fondos ha tenido en cuenta. La criba por lotes solo ocurre si la conversación deja tiempo; en una charla de tres turnos no llega a empezar.
 - **Zona y sector solo están verificados donde hay folleto.** Para el resto, las preferencias se comprueban con el nombre del fondo y el informe lo marca como «exposición no verificada».
 - **La inversión mínima solo se conoce donde hay ficha** (unos 1.700 fondos); esos se descartan si el mínimo supera el importe. Para el resto, por debajo de 100.000 se prefiere, entre las clases de un mismo fondo, la que no parece institucional; el mínimo real hay que mirarlo en el folleto.
@@ -263,7 +290,7 @@ Los pasos 3 y 5 con 150 candidatos necesitan el filtro en GPU (o Claude). Con Ge
 - **El reparto no es una optimización de cartera completa.** Con el histórico diario se usan correlaciones para evitar duplicados y para la paridad de riesgo, pero no hay objetivo de rentabilidad esperada ni frontera eficiente.
 - **La selección mira al pasado.** El modelo tiende a elegir los fondos que más subieron: en una prueba con riesgo alto propuso cinco fondos que habían superado a más del 97 % de los 30.768 comparables, cuando la mediana de estos fue del +11,8 % en cinco años. El informe y el resumen lo dicen expresamente, pero la selección en sí no se ha corregido.
 - **Los escenarios son una ilustración, no una previsión.** Repetir todos los años el peor o el mejor es muy improbable. El escenario central usa lo que ganó un fondo comparable típico, no el año mediano de la cartera.
-- **Los plazos largos se comparan con cifras a 5 años.** El catálogo no trae métricas a 10; el histórico diario solo se lee para los fondos de la propuesta.
+- **Los plazos largos se comparan con cifras a 5 años.** El catálogo no trae rentabilidad, volatilidad ni Sharpe a 10 años. Del histórico diario salen las caídas, los grupos y el comportamiento de la cartera, no esas tres cifras.
 - **Los modelos locales no consultan internet.** Solo usan lo que se les pasa.
 - **En manos libres no se puede interrumpir a la página:** solo escucha cuando ha terminado de hablar.
 
@@ -289,33 +316,38 @@ Cómo se usa en la recomendación:
 
 La descarga sigue creciendo: el script solo lee los fondos nuevos o con documentos nuevos, e `iniciar.bat` lo ejecuta en cada arranque.
 
-**Búsqueda semántica.** Al procesar los folletos se calcula un vector del objetivo de cada fondo con un modelo de embeddings multilingüe pequeño, en CPU (unos 5 minutos la primera vez para 17.467 fondos; después solo los nuevos). Cuando el cliente pide un tema, se buscan los fondos cuyo objetivo se le parece aunque la palabra no esté en el nombre ni el folleto esté en español: «oro y metales preciosos» encuentra fondos de «gold». Esos fondos pasan el filtro temático y reciben un pequeño extra de puntuación.
+**Búsqueda semántica.** Al procesar los folletos se calcula un vector del objetivo de cada fondo con un modelo de embeddings multilingüe pequeño, en CPU (unos 5 minutos la primera vez para 17.467 fondos; después solo los nuevos). Cuando el cliente pide un tema, se buscan los fondos cuyo objetivo se le parece aunque la palabra no esté en el nombre ni el folleto esté en español: «oro y metales preciosos» encuentra fondos de «gold». Esos fondos pasan el filtro de palabras que fija el modelo y reciben un pequeño extra de puntuación. Los filtros fijos de zona, sector y clase de activo no cambian.
+
+Los folletos no se leen con un modelo de lenguaje ni con OCR: un documento escaneado o con una redacción distinta de la habitual se queda sin datos.
 
 ## Histórico diario de precios
 
-Si `fondos_diarios.parquet` (317 millones de filas, 5,3 GB, no incluido en el repositorio) está junto al proyecto o en `..\datos`, la app lee de él solo los fondos de cada propuesta, en menos de un segundo. Con eso sustituye fondos que son casi el mismo, reparte por paridad de riesgo cuando deciden las reglas y calcula la evolución real, la volatilidad conjunta, la caída máxima y los escenarios del informe. Sin el Parquet, el informe muestra la simulación ilustrativa.
+La app usa `fondos_diarios.parquet` (317 millones de filas, 5,3 GB, no incluido en el repositorio) si está en la carpeta del proyecto, en `data/private`, en `..\datos` o en la ruta de la variable `DAILY_PARQUET`. Solo lee los fondos que necesita:
+
+- **Antes de elegir:** los precios semanales de hasta 2.000 candidatos (3–5 s). De ahí salen la caída máxima de cada fondo, que cuenta en el ranking, y los grupos de fondos que se mueven muy parecido, que permiten al modelo leer una línea por grupo.
+- **Después de elegir:** sustituye fondos casi idénticos, reparte por paridad de riesgo cuando deciden las reglas y calcula la evolución real, la volatilidad conjunta, la caída máxima y los escenarios del informe.
+
+Sin el Parquet, el modelo lee los 150 mejores candidatos y el informe muestra la simulación ilustrativa.
 
 Los fondos que solo tienen folleto siguen sin poder puntuarse: el Parquet contiene los mismos fondos que el catálogo.
-
-Los textos no se leen con un modelo de lenguaje ni con OCR: un documento escaneado o con una redacción distinta de la habitual se queda sin datos.
 
 ## Comparación entre versiones
 
 | | Especialistas | Modelo único |
 | --- | --- | --- |
 | Voz a texto | Whisper `large-v3-turbo` (GPU) o `small` (CPU) | Gemma 3n E2B |
-| Entender la petición | Reglas en español | Gemma 3n E2B |
-| Qué preguntar | Preguntas fijas | Gemma 3n E2B las redacta |
+| Entender la petición | Reglas en español (Gemma 3 4B opcional) | Gemma 3n E2B |
+| Qué preguntar | Preguntas fijas | Fijas para los datos obligatorios; Gemma 3n redacta las de asesor |
 | Criterios, elección y reparto | Gemma 3 4B | Gemma 3n E2B |
 | Hablar | Voz neuronal en línea o Piper | La misma (Gemma 3n no genera voz) |
-| Memoria de GPU | 4 GB | 11 GB |
+| Memoria de GPU | unos 6 GB (Gemma 3 4B en 4 bits y Whisper) | 11 GB |
 
 Las dos comparten catálogo, filtros, validación, PDF y voz, así que la diferencia que se observa es la de los modelos. Cada respuesta muestra los segundos que ha tardado. En la GPU solo hay un modelo cargado a la vez: al cambiar de versión, la primera respuesta tarda más.
 
-**Primera comparación.** Es una sola conversación de tres turnos hablados, con audios generados por Piper y un micrófono simulado en el navegador; no es una evaluación.
+**Primera comparación.** Es una sola conversación de tres turnos hablados, con voz sintética y un micrófono simulado en el navegador; no es una evaluación.
 
 - **Especialistas:** transcribió y extrajo bien los datos y entregó la propuesta en el tercer turno. Las preguntas tardan 1–3 s; la propuesta, unos 11 s tras conversar por voz.
-- **Modelo único:** transcribió bien, pero no dedujo la divisa de «10.000 euros» y siguió preguntando, así que no llegó a la propuesta en tres turnos. Cada turno tarda unos 18 s. Sus preguntas suenan más naturales.
+- **Modelo único:** transcribió bien casi todo, pero no dedujo la divisa de «10.000 euros» (hubo que decírsela en un turno más) e inventó datos que nadie había dicho, como una zona «global» y «un solo fondo», con lo que acabó proponiendo un único fondo. Cada turno tarda entre 14 y 32 s. Sus preguntas suenan más naturales.
 
 ## Modelos candidatos por paso
 
@@ -371,6 +403,10 @@ src/money.py               Importes en español y reparto al céntimo
 data/demo_funds.csv        Catálogo sintético
 data/private/, models/     Catálogo real y modelos, ignorados por Git
 tests/                     Pruebas (python -m unittest discover -s tests)
+docs/                      Pitch (pitch.md y pitch_fondoclaro_v3.pptx) y capturas
+requirements.txt           Dependencias de la instalación básica
+requirements-gpu.txt       Dependencias de los modelos de GPU
+requirements-claude.txt    Solo si se activa Claude por API
 ```
 
 El dataset EODHD y sus derechos de uso no se incluyen en el repositorio; no lo publiques sin comprobar la licencia. Gemma se distribuye bajo los términos de uso de Google y Piper (`piper-tts`) bajo GPL-3.0.
