@@ -6,6 +6,8 @@ Los modelos se descargan de Hugging Face y se ejecutan en local; no hace falta n
 
 > Demostración educativa. No es asesoramiento de inversión, no sustituye un test de idoneidad y no verifica comisiones ni mínimos de suscripción. Las rentabilidades pasadas no garantizan rentabilidades futuras.
 
+**Vídeo de demostración:** [ejemplos_video/Video_ejemplo2.mp4](ejemplos_video/Video_ejemplo2.mp4), una conversación real por voz hasta la propuesta (81 MB; GitHub no lo reproduce en línea, hay que descargarlo).
+
 ![Conversación manos libres: la página saluda y espera a que hables](docs/images/conversacion.png)
 
 ![Propuesta con reparto, informe PDF y audio resumen](docs/images/propuesta.png)
@@ -403,6 +405,7 @@ src/money.py               Importes en español y reparto al céntimo
 data/demo_funds.csv        Catálogo sintético
 data/private/, models/     Catálogo real y modelos, ignorados por Git
 tests/                     Pruebas (python -m unittest discover -s tests)
+ejemplos_video/            Vídeo de demostración
 docs/                      Pitch (pitch.md y pitch_fondoclaro_v3.pptx) y capturas
 requirements.txt           Dependencias de la instalación básica
 requirements-gpu.txt       Dependencias de los modelos de GPU
