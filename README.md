@@ -123,7 +123,9 @@ En la barra lateral, «Perfil interpretado (editable)» muestra lo que la págin
 
 ## Entradas, modelos y salidas
 
-Cada cuadro indica, por este orden, el paso, el modelo instalado y el que creemos que funcionaría mejor (no probado aquí).
+Hay un diagrama por versión. Cada cuadro de modelo indica, por este orden, el paso, el modelo instalado y el que creemos que funcionaría mejor (no probado aquí). Los cuadros «sin modelo» son código.
+
+### Versión Especialistas: un modelo adaptado a cada paso
 
 ```mermaid
 flowchart LR
@@ -132,54 +134,93 @@ flowchart LR
         I1[🎙️ Micrófono, manos libres<br/>entrada principal]
         I2[📎 Audio adjunto<br/>wav, mp3, m4a, ogg…]
         I3[⌨️ Texto escrito]
-        I4[🖼️ Imagen<br/>solo modelo único]
-        I5[(Catálogo EODHD<br/>92.257 fondos)]
-        I6[(📑 Folletos: DFI, KID, fichas<br/>PDF y HTML)]
+        I4[(Catálogo EODHD<br/>92.257 fondos)]
+        I5[(📑 Folletos: DFI, KID, fichas<br/>PDF y HTML)]
+        I6[(📈 Histórico diario<br/>Parquet, 317 millones de filas)]
     end
 
-    subgraph ESP[Versión Especialistas]
+    subgraph MOD[Modelos, en cadena]
         direction TB
         E1[Voz a texto<br/>Whisper large-v3-turbo en GPU · small en CPU<br/>mejor: Parakeet TDT v3]
         E2[Extraer preferencias y preguntar<br/>Reglas en español · opcional Gemma 3 4B<br/>mejor: Gemma 3 12B o Claude Haiku 4.5]
         E3[Decidir criterios de búsqueda<br/>Gemma 3 4B en GPU<br/>mejor: Gemma 3 12B o Claude Opus 5.5]
-        E4[Aplicar criterios a todo el catálogo<br/>Código, sin modelo]
-        E5[Elegir y repartir entre 150 candidatos<br/>Gemma 3 4B en GPU · respaldo Gemma 3 1B en CPU<br/>mejor: Gemma 3 12B o Claude Opus 5.5]
-        E1 --> E2 --> E3 --> E4 --> E5
-    end
-
-    subgraph UNI[Versión Modelo único]
-        direction TB
-        U1[Oír, entender, preguntar,<br/>decidir criterios, elegir y repartir<br/>Gemma 3n E2B en GPU<br/>mejor: Gemma 3n E4B o Gemini]
-        U2[Aplicar criterios a todo el catálogo<br/>Código, sin modelo]
-        U1 --> U2 --> U1
+        E4[Búsqueda semántica en folletos<br/>MiniLM multilingüe en CPU<br/>mejor: bge-m3]
+        E5[Filtrar el catálogo, caídas y grupos de fondos parecidos<br/>sin modelo]
+        E6[Elegir y repartir, una línea por grupo<br/>Gemma 3 4B en GPU · respaldo Gemma 3 1B en CPU<br/>mejor: Gemma 3 12B o Claude Opus 5.5]
+        E1 --> E2 --> E3 --> E4 --> E5 --> E6
     end
 
     subgraph OUT[Salidas]
         direction TB
-        O1[🔊 Respuesta y preguntas habladas<br/>Voz neuronal en línea · respaldo Piper local<br/>mejor local: Kokoro o XTTS-v2]
-        O2[📄 Informe PDF<br/>ReportLab, sin modelo]
+        O1[🔊 Preguntas y resumen hablados<br/>Voz neuronal en línea · respaldo Piper local<br/>mejor local: Kokoro o XTTS-v2]
+        O2[📄 Informe PDF con gráficos<br/>ReportLab, sin modelo]
         O3[🔊 Audio resumen descargable<br/>la misma voz]
+        O4[🖥️ Tabla, perfil editable y avisos en pantalla<br/>sin modelo]
     end
 
     I1 --> E1
     I2 --> E1
     I3 --> E2
-    I5 --> E4
-    I6 -- leídos con reglas --> E4
-    I6 -- leídos con reglas --> U2
-    I1 --> U1
-    I2 --> U1
-    I3 --> U1
-    I4 --> U1
-    I5 --> U2
+    I4 --> E5
+    I5 -- leídos con reglas --> E4
+    I5 -- riesgo oficial, costes, mínimos --> E5
+    I6 --> E5
     E2 -- falta un dato --> O1
-    E5 --> O1
-    E5 --> O2
-    E5 --> O3
-    U1 --> O1
-    U1 --> O2
-    U1 --> O3
+    E6 --> O1
+    E6 --> O2
+    E6 --> O3
+    E6 --> O4
+    I6 -- evolución real y escenarios --> O2
 ```
+
+### Versión Modelo único: un solo modelo multimodal
+
+```mermaid
+flowchart LR
+    subgraph IN2[Entradas]
+        direction TB
+        J1[🎙️ Micrófono, manos libres]
+        J2[📎 Audio adjunto<br/>wav, mp3, flac, ogg]
+        J3[⌨️ Texto escrito]
+        J4[🖼️ Imagen<br/>png, jpg · sin probar]
+        J5[(Catálogo EODHD<br/>92.257 fondos)]
+        J6[(📑 Folletos)]
+        J7[(📈 Histórico diario)]
+    end
+
+    subgraph UNI[Un único modelo para todo]
+        direction TB
+        U1[Oír · entender · preguntar · decidir criterios · elegir y repartir<br/>Gemma 3n E2B en GPU<br/>mejor: Gemma 3n E4B o Gemini]
+        U2[Búsqueda semántica en folletos<br/>MiniLM multilingüe en CPU]
+        U3[Filtrar el catálogo, caídas y grupos de fondos parecidos<br/>sin modelo]
+        U1 -- criterios --> U2 --> U3
+        U3 -- una línea por grupo --> U1
+    end
+
+    subgraph OUT2[Salidas]
+        direction TB
+        P1[🔊 Preguntas y resumen hablados<br/>Voz neuronal en línea · respaldo Piper local<br/>Gemma 3n no genera voz]
+        P2[📄 Informe PDF con gráficos<br/>ReportLab, sin modelo]
+        P3[🔊 Audio resumen descargable]
+        P4[🖥️ Tabla, perfil editable y avisos en pantalla]
+    end
+
+    J1 --> U1
+    J2 --> U1
+    J3 --> U1
+    J4 --> U1
+    J5 --> U3
+    J6 --> U2
+    J6 --> U3
+    J7 --> U3
+    U1 --> P1
+    U1 --> P2
+    U1 --> P3
+    U1 --> P4
+    J7 -- evolución real y escenarios --> P2
+```
+
+Las dos versiones comparten datos, filtros, validación, voz de respuesta e informe. Lo que cambia es quién oye, entiende, pregunta y decide: cuatro piezas especializadas en una, un solo modelo en la otra.
 
 ## Cómo funciona
 
@@ -206,7 +247,7 @@ flowchart LR
 5. **El modelo elige y reparte.** Tras los filtros quedan hasta 2.000 candidatos. Con el histórico diario se agrupan los que se mueven muy parecido (correlación semanal superior a 0,9) y el modelo lee una línea por grupo, la del mejor fondo: 150 líneas representan a muchos más fondos (1.600 en una prueba sin tema concreto). Si la conversación da tiempo, el modelo criba además los grupos siguientes por lotes de 100 y sus elegidos entran en la lista final. Devuelve qué fondos y con qué peso. Se respeta un número concreto solicitado de 1 a 7 fondos; «un solo fondo» recibe el 100 %. Si no se indica, se eligen entre 2 y 7 según la diversificación. Sin el histórico diario, el modelo lee los 150 mejores candidatos.
 6. **Validación.** Solo se aceptan fondos de la lista y pesos numéricos finitos. Tanto el modelo como las reglas respetan un mínimo del 5 % y un máximo del 60 % por fondo (80 % si hay dos; 100 % si solo hay uno). Si el modelo falla o su reparto no es válido, deciden las reglas: inversa de la volatilidad, o más peso a los fondos que mejor encajan si el objetivo es crecer.
 7. **Segunda mirada con el histórico diario.** Si dos fondos elegidos se mueven casi igual (correlación semanal superior a 0,95), el peor colocado se sustituye por el siguiente candidato. Cuando deciden las reglas, el reparto pasa a ser por paridad de riesgo con las correlaciones reales.
-8. **Entrega.** La página resume la cartera de viva voz en menos de un minuto, en lenguaje llano y sin nombres ni pesos: cuántos fondos, de qué tipo, cuánto habría ganado y cuánto llegó a caer en conjunto. Después pregunta si se quiere el detalle y, solo entonces, lee fondo a fondo. En pantalla y en el PDF están siempre la conversación, el perfil, los criterios, la cartera y el porqué de cada fondo; la evolución real que habría tenido la cartera, con su volatilidad y su caída máxima; y, en otro gráfico, tres escenarios para el plazo pedido según el peor, el mediano y el mejor año de su historia. Los importes se asignan a céntimos conservando el total y los límites de concentración.
+8. **Entrega.** La página resume la cartera de viva voz en menos de un minuto, en lenguaje llano y sin nombres ni pesos: cuántos fondos, de qué tipo, cuánto habría ganado y cuánto llegó a caer en conjunto. Lo pone en contexto: dice cuánto ganó un fondo comparable típico y, si los elegidos están entre los que mejor lo hicieron, avisa de que no hay que contar con que se repita. Después pregunta si se quiere el detalle y, solo entonces, lee fondo a fondo. En pantalla y en el PDF están siempre la conversación, el perfil, los criterios, la cartera y el porqué de cada fondo, con el porcentaje de fondos comparables al que superó; la evolución real que habría tenido la cartera, con su volatilidad y su caída máxima; y, en otro gráfico, tres escenarios para el plazo pedido: su peor año, un fondo comparable típico y su mejor año. Los importes se asignan a céntimos conservando el total y los límites de concentración.
 
 Se reconocen importes en EUR, USD, GBP y CHF, con cifras o expresados en español («diez mil euros», «10.000 dólares», «ciento veinte euros con cincuenta céntimos»). Los importes negativos, nulos o no interpretables que se detecten requieren aclaración; no se transforman en cantidades positivas. Cuando se pregunta por el importe, se puede contestar solo con la cantidad. El importe sigue siendo opcional si no se ha indicado.
 
@@ -220,7 +261,8 @@ Los pasos 3 y 5 con 150 candidatos necesitan el filtro en GPU (o Claude). Con Ge
 - **La inversión mínima solo se conoce donde hay ficha** (unos 1.700 fondos); esos se descartan si el mínimo supera el importe. Para el resto, por debajo de 100.000 se prefiere, entre las clases de un mismo fondo, la que no parece institucional; el mínimo real hay que mirarlo en el folleto.
 - **Las exclusiones por sector no se pueden garantizar** sin la composición completa; la app lo dice y pregunta si sigue sin ellas.
 - **El reparto no es una optimización de cartera completa.** Con el histórico diario se usan correlaciones para evitar duplicados y para la paridad de riesgo, pero no hay objetivo de rentabilidad esperada ni frontera eficiente.
-- **Los escenarios son una ilustración, no una previsión.** Repetir todos los años el peor o el mejor es muy improbable, y como los fondos se eligen por su buen pasado, las cifras tienden a ser optimistas.
+- **La selección mira al pasado.** El modelo tiende a elegir los fondos que más subieron: en una prueba con riesgo alto propuso cinco fondos que habían superado a más del 97 % de los 30.768 comparables, cuando la mediana de estos fue del +11,8 % en cinco años. El informe y el resumen lo dicen expresamente, pero la selección en sí no se ha corregido.
+- **Los escenarios son una ilustración, no una previsión.** Repetir todos los años el peor o el mejor es muy improbable. El escenario central usa lo que ganó un fondo comparable típico, no el año mediano de la cartera.
 - **Los plazos largos se comparan con cifras a 5 años.** El catálogo no trae métricas a 10; el histórico diario solo se lee para los fondos de la propuesta.
 - **Los modelos locales no consultan internet.** Solo usan lo que se les pasa.
 - **En manos libres no se puede interrumpir a la página:** solo escucha cuando ha terminado de hablar.
