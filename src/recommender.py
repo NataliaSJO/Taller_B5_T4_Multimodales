@@ -169,6 +169,7 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
     counts = {"catalog": len(funds), "currency": 0, "metrics": 0, "risk": 0, "profile": 0,
               "sri": 0, "minimum": 0}
     scored = []
+    peers = []      # returns of every fund of this currency within the profile's volatility limit
     for fund in funds:
         # GBX denotes pence sterling; its percentage returns are comparable with GBP.
         if fund.currency != preferences.currency and not (preferences.currency == "GBP" and fund.currency == "GBX"):
@@ -186,6 +187,7 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
         counts["metrics"] += 1
         if vol > max_vol:
             continue
+        peers.append(ret)
         if fund.sri is not None and fund.sri > MAX_SRI[preferences.risk]:
             counts["sri"] += 1          # the official risk class says no, whatever the past volatility
             continue
@@ -230,6 +232,7 @@ def recommend(funds: list[Fund], preferences: Preferences, limit: int = 5,
         scored.append(Recommendation(fund=fund, score=score, rationale=rationale))
     scored.sort(key=lambda item: (-item.score, item.fund.isin))
     counts["eligible"] = len(scored)
+    counts["peer_returns"] = sorted(peers)
     # One share class per fund: the best scored, or a retail one when the amount is small.
     retail = preferences.amount is not None and preferences.amount < RETAIL_BELOW
     looks_institutional = lambda fund: fund.min_investment is None and _institutional(fund)  # a known minimum decides

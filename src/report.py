@@ -2,6 +2,7 @@
 
 import io
 import re
+from bisect import bisect_left
 from datetime import date
 from decimal import Decimal
 from math import fsum
@@ -75,12 +76,26 @@ def summary_text(proposal: Proposal, preferences: Preferences, notes: list[str] 
     return " ".join(parts)
 
 
+def peer_share(peers, value: float) -> float | None:
+    """Fraction of comparable funds that did worse than this return."""
+    return bisect_left(peers, value) / len(peers) if peers else None
+
+
+def peer_median(peers) -> float | None:
+    return peers[len(peers) // 2] if peers else None
+
+
+def _beaten(share: float) -> str:
+    """«a la de más del 99,9 %» for the very top, «a la del 87,3 %» otherwise."""
+    return "a la de más del 99,9 %" if share > 0.999 else "a la del " + f"{share * 100:.1f}".replace(".", ",") + " %"
+
+
 def _round(value: float) -> str:
     return f"{value * 100:.0f}"
 
 
 def brief_summary(proposal: Proposal, preferences: Preferences, notes: list[str] = (), analysis=None,
-                  reviewed: int = 0) -> str:
+                  reviewed: int = 0, peers=()) -> str:
     """Under a minute, in plain words: what kind of portfolio this is and how it has behaved as a
     whole. Fund names and weights are on screen and in the PDF; they are told only if asked for."""
     years = preferences.horizon_years
@@ -123,6 +138,15 @@ def brief_summary(proposal: Proposal, preferences: Preferences, notes: list[str]
         weighted = sum(item.fund.metrics(years)[0] * float(weight) for item, weight in zip(proposal.items, weights))
         parts.append(f"En {'el último año' if window == 1 else f'los últimos {window} años'}, estos fondos, con este "
                      f"reparto, acumularon una rentabilidad del {_round(weighted)} por ciento.")
+    median = peer_median(peers)
+    if median is not None:
+        window = metric_years(years)
+        mine = sum(item.fund.metrics(years)[0] * float(weight) for item, weight in zip(proposal.items, weights))
+        parts.append(f"Para que te hagas una idea, lo normal entre los fondos parecidos fue "
+                     f"{'ganar' if median >= 0 else 'perder'} un {_round(abs(median))} por ciento en "
+                     f"{'ese año' if window == 1 else f'esos {window} años'}"
+                     + ("; estos están entre los que mejor lo hicieron, así que no cuentes con que se repita."
+                        if peer_share(peers, mine) >= 0.90 else "."))
     costs = [item.fund.costs for item in proposal.items if item.fund.costs is not None]
     if len(costs) >= max(2, count - 1):
         parts.append(f"Sus costes rondan el {_spoken(sum(costs) / len(costs) / 100)} por ciento al año.")
@@ -203,13 +227,13 @@ def scenario_points(rate: float, years: int, base: float) -> list[tuple[float, f
     return [(month / 12, base * (1 + rate) ** (month / 12)) for month in range(years * 12 + 1)]
 
 
-def _scenario_chart(analysis, years: int, base: float, currency: str) -> Drawing:
-    """Three lines: every year like the worst, the median and the best year the portfolio has lived."""
+def _scenario_chart(analysis, years: int, base: float, currency: str, typical: float, typical_label: str) -> Drawing:
+    """Three lines: every year like the portfolio's worst and best, and a middle one (`typical`)."""
     drawing = Drawing(16 * cm, 7.4 * cm)
     chart = LinePlot()
     chart.x, chart.y, chart.width, chart.height = 2.5 * cm, 1.2 * cm, 9.6 * cm, 4.8 * cm
     scenarios = ((analysis.worst_year, colors.HexColor("#c0392b"), "Como el peor año"),
-                 (analysis.median_year, NAVY, "Como un año medio"),
+                 (typical, NAVY, typical_label),
                  (analysis.best_year, TEAL, "Como el mejor año"))
     chart.data = [scenario_points(rate, years, base) for rate, _, _ in scenarios]
     for index, (_, color, _) in enumerate(scenarios):
@@ -233,7 +257,7 @@ def _scenario_chart(analysis, years: int, base: float, currency: str) -> Drawing
 
 
 def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str], source: str,
-              notes: list[str] = (), criteria: str = "", others: list = (), analysis=None) -> bytes:
+              notes: list[str] = (), criteria: str = "", others: list = (), analysis=None, peers=()) -> bytes:
     styles = getSampleStyleSheet()
     body = ParagraphStyle("body", parent=styles["BodyText"], fontSize=9.5, leading=13)
     small = ParagraphStyle("small", parent=body, fontSize=8, leading=10.5, textColor=colors.HexColor("#555555"))
@@ -298,6 +322,16 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
     story.append(Spacer(1, 4))
     story.append(Paragraph(f"Rentabilidad acumulada histórica de la cartera a {window} "
                            f"{'año' if window == 1 else 'años'}, ponderada por peso: <b>{_pct(weighted, signed=True)}</b>.", body))
+    median = peer_median(peers)
+    if median is not None:
+        top = peer_share(peers, weighted) >= 0.90
+        story.append(Paragraph(
+            "<b>Para ponerlo en contexto:</b> entre los " + f"{len(peers):,}".replace(",", ".")
+            + " fondos comparables (misma divisa, datos completos y "
+            + f"volatilidad dentro del perfil), la rentabilidad mediana en ese periodo fue del <b>{_pct(median, signed=True)}</b>. "
+            + ("Los fondos de esta propuesta están entre los que mejor lo hicieron; es lo que ocurre al elegir mirando el "
+               "pasado, y no hay que contar con que se repita." if top else
+               "Las rentabilidades pasadas no anticipan las futuras."), body))
     if proposal.comment:
         story.append(Paragraph(_text(proposal.comment), body))
     story.append(_chart(proposal, years))
@@ -319,20 +353,26 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
     if analysis and analysis.worst_year is not None:
         base = float(preferences.amount) if preferences.amount else 100.0
         unit = currency if preferences.amount else "base 100"
-        ends = [scenario_points(rate, years, base)[-1][1]
-                for rate in (analysis.worst_year, analysis.median_year, analysis.best_year)]
-        story.append(Paragraph("Escenarios según su peor, su mejor y un año medio", heading))
+        if median is not None:      # the middle scenario is a typical comparable fund, not these past winners
+            typical = (1 + median) ** (1 / window) - 1
+            typical_label = "Como un fondo comparable típico"
+            middle = (f"El escenario central no usa el año mediano de esta cartera (<b>{_pct(analysis.median_year, signed=True)}</b>), "
+                      f"sino lo que ganó al año un fondo comparable típico (<b>{_pct(typical, signed=True)}</b>), porque estos "
+                      "fondos se han elegido entre los que mejor lo hicieron. ")
+        else:
+            typical, typical_label, middle = analysis.median_year, "Como un año medio", ""
+        ends = [scenario_points(rate, years, base)[-1][1] for rate in (analysis.worst_year, typical, analysis.best_year)]
+        story.append(Paragraph("Escenarios: su peor año, un fondo típico y su mejor año", heading))
         story.append(Paragraph(
             f"De los {analysis.year_windows} periodos de doce meses que caben en el histórico real de la cartera, el peor "
-            f"dio un <b>{_pct(analysis.worst_year, signed=True)}</b>, el mediano un "
-            f"<b>{_pct(analysis.median_year, signed=True)}</b> y el mejor un "
-            f"<b>{_pct(analysis.best_year, signed=True)}</b>. El gráfico muestra tu capital durante {years} "
-            f"{'año' if years == 1 else 'años'} si todos los años se repitiera cada uno de ellos: acabaría en "
+            f"dio un <b>{_pct(analysis.worst_year, signed=True)}</b> y el mejor un "
+            f"<b>{_pct(analysis.best_year, signed=True)}</b>. {middle}El gráfico muestra tu capital durante {years} "
+            f"{'año' if years == 1 else 'años'} si todos los años se repitiera cada escenario: acabaría en "
             f"<b>{format_money(ends[0])}</b>, <b>{format_money(ends[1])}</b> y <b>{format_money(ends[2])}</b> {_text(unit)}. "
             "Es una ilustración para dimensionar el riesgo: repetir el peor o el mejor año todos los años es muy "
             "improbable, el pasado no anticipa el futuro y, como los fondos se han elegido por su buen comportamiento "
             "pasado, estas cifras tienden a ser optimistas.", small))
-        story.append(_scenario_chart(analysis, years, base, unit))
+        story.append(_scenario_chart(analysis, years, base, unit, typical, typical_label))
     if analysis:
         pass    # the real series above replaces the illustrative simulation
     elif preferences.amount is not None and preferences.amount > 0:
@@ -357,7 +397,10 @@ def build_pdf(proposal: Proposal, preferences: Preferences, user_turns: list[str
 
     story.append(Paragraph("Por qué cada fondo", heading))
     for index, item in enumerate(proposal.items, start=1):
-        story.append(Paragraph(f"<b>{index}. {_text(item.fund.name)}</b> — {_text(item.rationale)}", body))
+        share = peer_share(peers, item.fund.metrics(years)[0])
+        ranking = (f" Su rentabilidad superó {_beaten(share)} de los fondos comparables."
+                   if share is not None else "")
+        story.append(Paragraph(f"<b>{index}. {_text(item.fund.name)}</b> — {_text(item.rationale + ranking)}", body))
 
     if others:
         story.append(Paragraph("Otros fondos con folleto que encajan", heading))

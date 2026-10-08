@@ -330,14 +330,15 @@ def propose(funds, source: str, select, decide, shortlist=None):
         say(str(exc))
         return
     how = criteria.describe() if criteria else ""
+    peers = diagnostics.get("peer_returns") or ()     # to say how exceptional the chosen funds were
     others = brochures.without_history(state.get("documents") or {}, profile)
     progress.update(label="Preparando el informe y la voz…")
     try:
-        pdf = build_pdf(proposal, profile, turns, source, notes, how, others, analysis)
+        pdf = build_pdf(proposal, profile, turns, source, notes, how, others, analysis, peers)
     except Exception:   # the proposal is still shown and spoken
         pdf = None
     state.detail = summary_text(proposal, profile)
-    say(brief_summary(proposal, profile, notes, analysis, sum(reviewed[1:]) if reviewed else 0), result={
+    say(brief_summary(proposal, profile, notes, analysis, sum(reviewed[1:]) if reviewed else 0, peers), result={
         "proposal": proposal, "profile": profile, "eligible": diagnostics["eligible"], "criteria": how,
         "others": others, "excluded": {key: diagnostics.get(key, 0) for key in ("sri", "minimum")},
         "analysis": analysis, "pdf": pdf, "notes": notes, "reviewed": reviewed,

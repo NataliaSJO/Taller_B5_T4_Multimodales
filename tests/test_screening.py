@@ -75,6 +75,25 @@ class SummaryTests(unittest.TestCase):
         self.assertIn(items[0].fund.name, detail)
         self.assertLess(len(short.split()), 150)                        # about a minute of speech
 
+    def test_past_winners_are_put_in_context(self):
+        from src.report import build_pdf, peer_median, peer_share
+        profile = Preferences(5, "alto", "EUR", amount=10000)
+        items, diagnostics = recommend(load_catalog(ROOT / "data/demo_funds.csv"), profile, limit=40)
+        peers = diagnostics["peer_returns"]
+        self.assertEqual(peers, sorted(peers))
+        self.assertEqual(peer_share(peers, max(peers) + 1), 1.0)
+        self.assertEqual(peer_share(peers, min(peers)), 0.0)
+        best = sorted(items, key=lambda item: -item.fund.return_5y)[:2]
+        proposal = Proposal(tuple(best), (0.5, 0.5), "Reglas deterministas")
+        spoken = brief_summary(proposal, profile, peers=peers)
+        self.assertIn("lo normal entre los fondos parecidos", spoken)
+        self.assertNotIn("no cuentes con que se repita", spoken)                       # not in the top tenth here
+        many = sorted(index / 1000 for index in range(1000))                            # 1.000 peers, none above +100 %
+        self.assertIn("no cuentes con que se repita", brief_summary(proposal, profile, peers=many))
+        self.assertNotIn("lo normal entre", brief_summary(proposal, profile))          # without peers, nothing is claimed
+        self.assertTrue(build_pdf(proposal, profile, ["texto"], "demo", peers=peers).startswith(b"%PDF"))
+        self.assertAlmostEqual(peer_median(peers), peers[len(peers) // 2])
+
     def test_answer_to_the_offer_of_detail(self):
         for text in ("Sí", "sí, por favor", "Vale, cuéntame", "Quiero el detalle", "explícamelo"):
             self.assertIs(wants_more(text), True, text)
